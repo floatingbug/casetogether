@@ -2,39 +2,1139 @@ openapi: 3.1.0
 info:
   title: CaseTogether API
   version: 0.1.0
-  description: Vorläufiger Vertrag – vor Implementierung vervollständigen.
+  description: |
+    T001-Architektur-/Vertrags-Freeze, durch Nutzer am 2026-11-15 freigegeben. Fachliche Typen und Zod-Regeln: contracts/shared-types.md.
+    Alle nicht leeren Erfolgsantworten verwenden { data: ... }, Fehler verwenden
+    { error: ApiError }. Authentifizierung erfolgt über das HttpOnly-Cookie ct_session.
+    Unsichere Methoden erfordern zusätzlich einen zugelassenen Origin gemäß ADR-002.
 servers:
   - url: /api/v1
+security:
+  - cookieAuth: []
+tags:
+  - name: system
+  - name: auth
+  - name: rooms
+  - name: cases
+  - name: sessions
 paths:
   /health:
     get:
+      tags: [system]
       operationId: getHealth
+      security: []
+      summary: Prozess-Liveness ohne Datenbank- oder Providerabhängigkeit
       responses:
         "200":
-          description: Service erreichbar
-  /rooms:
+          description: Prozess erreichbar
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /ready:
+    get:
+      tags: [system]
+      operationId: getReadiness
+      security: []
+      summary: Readiness ausschließlich mit erforderlichen Abhängigkeiten
+      description: Ein optionaler KI-Provider und sein API-Schlüssel sind kein Readiness-Check.
+      responses:
+        "200":
+          description: Backend und MongoDB bereit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+        "503":
+          description: Erforderliche Abhängigkeit nicht bereit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+  /auth/register:
     post:
-      operationId: createRoom
-      security:
-        - bearerAuth: []
+      tags: [auth]
+      operationId: register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
       responses:
         "201":
-          description: Raum erstellt
-        "401":
-          description: Nicht authentifiziert
-  /rooms/join:
+          description: Konto und Auth-Session erstellt; HttpOnly-Cookie wird gesetzt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/CsrfRejected"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /auth/login:
     post:
-      operationId: joinRoom
-      security:
-        - bearerAuth: []
+      tags: [auth]
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
       responses:
         "200":
-          description: Raum beigetreten
+          description: Login erfolgreich; HttpOnly-Cookie wird gesetzt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
         "400":
-          description: Ungültiger Einladungscode
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/InvalidCredentials"
+        "403":
+          $ref: "#/components/responses/CsrfRejected"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      security: []
+      summary: Revoziert eine gültige Session und löscht das Cookie; ohne gültige Session idempotent
+      responses:
+        "204":
+          description: Cookie gelöscht; kein Body
+        "403":
+          $ref: "#/components/responses/CsrfRejected"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /me:
+    get:
+      tags: [auth]
+      operationId: getMe
+      responses:
+        "200":
+          description: Aktueller Nutzer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /rooms:
+    post:
+      tags: [rooms]
+      operationId: createRoom
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientRequest"
+      responses:
+        "201":
+          description: Erfolgreiche Initialerzeugung; Einladungscode ausschließlich in dieser ersten Response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateRoomResponseEnvelope"
+        "200":
+          description: Persistenter Replay ohne Klartextcode (outcome replayed, invitation null)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateRoomResponseEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/CsrfRejected"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /rooms/join:
+    post:
+      tags: [rooms]
+      operationId: joinRoom
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JoinRoomRequest"
+      responses:
+        "200":
+          description: Beigetreten oder bereits Mitglied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/CsrfRejected"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /rooms/{roomId}:
+    get:
+      tags: [rooms]
+      operationId: getRoom
+      parameters:
+        - $ref: "#/components/parameters/RoomId"
+      responses:
+        "200":
+          description: Für den Aufrufer bereinigter Raum-Snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "410":
+          $ref: "#/components/responses/RoomClosed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /rooms/{roomId}/invitation/rotate:
+    post:
+      tags: [rooms]
+      operationId: rotateInvitation
+      description: Nur Host in waiting/ready; erzeugt einen neuen Code und invalidiert den alten sofort.
+      parameters:
+        - $ref: "#/components/parameters/RoomId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RotateInvitationRequest"
+      responses:
+        "200":
+          description: Initial enthält outcome rotated den neuen Code; persistenter Replay enthält outcome replayed und invitation null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RotateInvitationResponseEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/CsrfRejected"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /rooms/{roomId}/start:
+    post:
+      tags: [rooms]
+      operationId: startGame
+      description: Nur Host, 2–4 Mitglieder; der Server pinnt die aktuell publizierte CaseVersion.
+      parameters:
+        - $ref: "#/components/parameters/RoomId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartGameRequest"
+      responses:
+        "200":
+          description: Spiel gestartet oder identischer erfolgreicher Request erneut geliefert
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/CsrfRejected"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /cases:
+    get:
+      tags: [cases]
+      operationId: listCases
+      description: Liefert nur sichere Zusammenfassungen, niemals Katalogantworten, Trigger oder Lösung.
+      responses:
+        "200":
+          description: Verfügbare Fälle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /sessions/{sessionId}:
+    get:
+      tags: [sessions]
+      operationId: getSession
+      description: Autoritative, für den aufrufenden Spieler projizierte Snapshot-Quelle nach Reconnect/Konflikt.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Empfängerspezifischer Game-Snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /sessions/{sessionId}/final-submission:
+    post:
+      tags: [sessions]
+      operationId: submitFinalSolution
+      description: Ein Raummitglied gibt die gemeinsam abgestimmte Lösung einmalig ab; kein Voting im MVP.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinalSubmissionRequest"
+      responses:
+        "200":
+          description: Finale Abgabe atomar bewertet; GameSnapshot mit phase completed und result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/CsrfRejected"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: ct_session
+      description: Signierte, serverseitig gespeicherte und revozierbare Auth-Session; kein Bearer-Token.
+  parameters:
+    RoomId:
+      name: roomId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/RoomId"
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/SessionId"
+  responses:
+    BadRequest:
+      description: VALIDATION_ERROR oder INVITATION_INVALID ohne sensitive Details
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InvalidCredentials:
+      description: INVALID_CREDENTIALS; keine Offenlegung der Kontoexistenz
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: UNAUTHENTICATED
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    CsrfRejected:
+      description: CSRF_REJECTED oder FORBIDDEN
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: NOT_FOUND; auch bei fehlender Sichtbarkeit/Mitgliedschaft
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RoomClosed:
+      description: ROOM_CLOSED
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: EMAIL_ALREADY_REGISTERED, ROOM_FULL, ROOM_NOT_JOINABLE, QUESTION_NOT_AVAILABLE, INVALID_STATE_TRANSITION, VERSION_CONFLICT, IDEMPOTENCY_KEY_REUSED oder OPERATION_IN_PROGRESS
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    PayloadTooLarge:
+      description: PAYLOAD_TOO_LARGE
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RateLimited:
+      description: RATE_LIMITED mit Retry-After und details.retryAfterSeconds
+      headers:
+        Retry-After:
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalError:
+      description: INTERNAL_ERROR ohne Stacktrace oder interne Daten
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    OpaqueId:
+      type: string
+      minLength: 1
+      maxLength: 64
+      pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+    UserId:
+      allOf:
+        - $ref: "#/components/schemas/OpaqueId"
+    RoomId:
+      allOf:
+        - $ref: "#/components/schemas/OpaqueId"
+    CaseId:
+      allOf:
+        - $ref: "#/components/schemas/OpaqueId"
+    SessionId:
+      allOf:
+        - $ref: "#/components/schemas/OpaqueId"
+    SuspectId:
+      allOf:
+        - $ref: "#/components/schemas/OpaqueId"
+    QuestionId:
+      allOf:
+        - $ref: "#/components/schemas/OpaqueId"
+    ClueId:
+      allOf:
+        - $ref: "#/components/schemas/OpaqueId"
+    MessageId:
+      allOf:
+        - $ref: "#/components/schemas/OpaqueId"
+    DialogueId:
+      allOf:
+        - $ref: "#/components/schemas/OpaqueId"
+    CaseVersion:
+      type: string
+      pattern: "^\\d+\\.\\d+\\.\\d+$"
+    ClientRequestId:
+      type: string
+      format: uuid
+      description: UUID v4, identisch beim Retry derselben logischen Aktion
+      pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    DateTime:
+      type: string
+      format: date-time
+      description: Server-Ausgabe in UTC mit Z und Millisekunden
+    Version:
+      type: integer
+      minimum: 1
+    PublicUser:
+      type: object
+      additionalProperties: false
+      required: [id, displayName]
+      properties:
+        id:
+          $ref: "#/components/schemas/UserId"
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 32
+    ErrorCode:
+      type: string
+      enum:
+        - VALIDATION_ERROR
+        - UNAUTHENTICATED
+        - INVALID_CREDENTIALS
+        - CSRF_REJECTED
+        - FORBIDDEN
+        - NOT_FOUND
+        - EMAIL_ALREADY_REGISTERED
+        - INVITATION_INVALID
+        - ROOM_FULL
+        - ROOM_NOT_JOINABLE
+        - ROOM_CLOSED
+        - QUESTION_NOT_AVAILABLE
+        - INVALID_STATE_TRANSITION
+        - VERSION_CONFLICT
+        - IDEMPOTENCY_KEY_REUSED
+        - OPERATION_IN_PROGRESS
+        - RATE_LIMITED
+        - PAYLOAD_TOO_LARGE
+        - AI_UNAVAILABLE
+        - INTERNAL_ERROR
+    FieldError:
+      type: object
+      additionalProperties: false
+      required: [path, code]
+      properties:
+        path:
+          type: string
+          maxLength: 100
+        code:
+          type: string
+          maxLength: 64
+    ErrorDetails:
+      type: object
+      additionalProperties: false
+      properties:
+        fieldErrors:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/FieldError"
+        retryAfterSeconds:
+          type: integer
+          minimum: 1
+        currentVersion:
+          $ref: "#/components/schemas/Version"
+    ApiError:
+      type: object
+      additionalProperties: false
+      required: [code, message, requestId]
+      properties:
+        code:
+          $ref: "#/components/schemas/ErrorCode"
+        message:
+          type: string
+          minLength: 1
+          maxLength: 300
+        requestId:
+          $ref: "#/components/schemas/OpaqueId"
+        details:
+          $ref: "#/components/schemas/ErrorDetails"
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          $ref: "#/components/schemas/ApiError"
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password, displayName]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 12
+          maxLength: 128
+          format: password
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 32
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 1
+          maxLength: 128
+          format: password
+          description: Login validiert nicht öffentlich die Registrierungsrichtlinie; nur Längen-/DoS-Grenze.
+    UserResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/PublicUser"
+    ClientRequest:
+      type: object
+      additionalProperties: false
+      required: [clientRequestId]
+      properties:
+        clientRequestId:
+          $ref: "#/components/schemas/ClientRequestId"
+    InvitationCode:
+      type: string
+      pattern: "^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$"
+    JoinRoomRequest:
+      type: object
+      additionalProperties: false
+      required: [clientRequestId, code]
+      properties:
+        clientRequestId:
+          $ref: "#/components/schemas/ClientRequestId"
+        code:
+          $ref: "#/components/schemas/InvitationCode"
+    RotateInvitationRequest:
+      type: object
+      additionalProperties: false
+      required: [clientRequestId, expectedVersion]
+      properties:
+        clientRequestId:
+          $ref: "#/components/schemas/ClientRequestId"
+        expectedVersion:
+          $ref: "#/components/schemas/Version"
+    StartGameRequest:
+      type: object
+      additionalProperties: false
+      required: [clientRequestId, caseId, expectedVersion]
+      properties:
+        clientRequestId:
+          $ref: "#/components/schemas/ClientRequestId"
+        caseId:
+          $ref: "#/components/schemas/CaseId"
+        expectedVersion:
+          $ref: "#/components/schemas/Version"
+    FinalSubmissionRequest:
+      type: object
+      additionalProperties: false
+      required: [clientRequestId, expectedVersion, suspectId]
+      properties:
+        clientRequestId:
+          $ref: "#/components/schemas/ClientRequestId"
+        expectedVersion:
+          $ref: "#/components/schemas/Version"
+        suspectId:
+          $ref: "#/components/schemas/SuspectId"
+    RoomRole:
+      type: string
+      enum: [host, member]
+    RoomStatus:
+      type: string
+      enum: [waiting, ready, in_progress, closed]
+    PresenceStatus:
+      type: string
+      enum: [online, offline]
+    RoomMember:
+      type: object
+      additionalProperties: false
+      required: [user, role, joinedAt]
+      properties:
+        user:
+          $ref: "#/components/schemas/PublicUser"
+        role:
+          $ref: "#/components/schemas/RoomRole"
+        joinedAt:
+          $ref: "#/components/schemas/DateTime"
+    RoomSummary:
+      type: object
+      additionalProperties: false
+      required: [id, status, version, host, members, maxPlayers, activeSessionId, createdAt, expiresAt]
+      properties:
+        id:
+          $ref: "#/components/schemas/RoomId"
+        status:
+          $ref: "#/components/schemas/RoomStatus"
+        version:
+          $ref: "#/components/schemas/Version"
+        host:
+          $ref: "#/components/schemas/PublicUser"
+        members:
+          type: array
+          minItems: 1
+          maxItems: 4
+          items:
+            $ref: "#/components/schemas/RoomMember"
+        maxPlayers:
+          type: integer
+          const: 4
+        activeSessionId:
+          anyOf:
+            - $ref: "#/components/schemas/SessionId"
+            - type: "null"
+        createdAt:
+          $ref: "#/components/schemas/DateTime"
+        expiresAt:
+          $ref: "#/components/schemas/DateTime"
+    ChatMessage:
+      type: object
+      additionalProperties: false
+      required: [id, roomId, sender, content, createdAt]
+      properties:
+        id:
+          $ref: "#/components/schemas/MessageId"
+        roomId:
+          $ref: "#/components/schemas/RoomId"
+        sender:
+          $ref: "#/components/schemas/PublicUser"
+        content:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        createdAt:
+          $ref: "#/components/schemas/DateTime"
+    PresenceMember:
+      type: object
+      additionalProperties: false
+      required: [userId, status, changedAt]
+      properties:
+        userId:
+          $ref: "#/components/schemas/UserId"
+        status:
+          $ref: "#/components/schemas/PresenceStatus"
+        changedAt:
+          $ref: "#/components/schemas/DateTime"
+    RoomSnapshot:
+      type: object
+      additionalProperties: false
+      required: [room, recentMessages, presence]
+      properties:
+        room:
+          $ref: "#/components/schemas/RoomSummary"
+        recentMessages:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+        presence:
+          type: array
+          maxItems: 4
+          items:
+            $ref: "#/components/schemas/PresenceMember"
+    Invitation:
+      type: object
+      additionalProperties: false
+      required: [code, expiresAt]
+      properties:
+        code:
+          $ref: "#/components/schemas/InvitationCode"
+        expiresAt:
+          $ref: "#/components/schemas/DateTime"
+    SecretReplayResponse:
+      type: object
+      additionalProperties: false
+      required: [outcome, roomId, invitation, recovery]
+      properties:
+        outcome:
+          type: string
+          const: replayed
+        roomId:
+          $ref: "#/components/schemas/RoomId"
+        invitation:
+          type: "null"
+          description: Klartextcodes werden niemals in Receipts oder Replay-Responses rekonstruiert.
+        recovery:
+          type: string
+          const: rotate_with_new_client_request_id_if_needed
+    CreatedRoomResponse:
+      type: object
+      additionalProperties: false
+      required: [outcome, room, recentMessages, presence, invitation]
+      properties:
+        outcome:
+          type: string
+          const: created
+        room:
+          $ref: "#/components/schemas/RoomSummary"
+        recentMessages:
+          type: array
+          maxItems: 0
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+        presence:
+          type: array
+          maxItems: 4
+          items:
+            $ref: "#/components/schemas/PresenceMember"
+        invitation:
+          $ref: "#/components/schemas/Invitation"
+    CreateRoomResponse:
+      oneOf:
+        - $ref: "#/components/schemas/CreatedRoomResponse"
+        - $ref: "#/components/schemas/SecretReplayResponse"
+      description: Nur outcome created darf Invitation.code enthalten; Replay ist bewusst codefrei.
+    CreateRoomResponseEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/CreateRoomResponse"
+    RoomResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/RoomSnapshot"
+    RotatedInvitationResponse:
+      type: object
+      additionalProperties: false
+      required: [outcome, room, invitation]
+      properties:
+        outcome:
+          type: string
+          const: rotated
+        room:
+          $ref: "#/components/schemas/RoomSummary"
+        invitation:
+          $ref: "#/components/schemas/Invitation"
+    RotateInvitationResponse:
+      oneOf:
+        - $ref: "#/components/schemas/RotatedInvitationResponse"
+        - $ref: "#/components/schemas/SecretReplayResponse"
+      description: Nur outcome rotated darf Invitation.code enthalten; Replay ist bewusst codefrei.
+    RotateInvitationResponseEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/RotateInvitationResponse"
+    CaseSummary:
+      type: object
+      additionalProperties: false
+      required: [id, title, description, estimatedDurationMinutes]
+      properties:
+        id:
+          $ref: "#/components/schemas/CaseId"
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        estimatedDurationMinutes:
+          type: integer
+          minimum: 5
+          maximum: 240
+    CaseListResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [items]
+          properties:
+            items:
+              type: array
+              maxItems: 100
+              items:
+                $ref: "#/components/schemas/CaseSummary"
+    CatalogQuestion:
+      type: object
+      additionalProperties: false
+      required: [questionId, suspectId, text]
+      properties:
+        questionId:
+          $ref: "#/components/schemas/QuestionId"
+        suspectId:
+          $ref: "#/components/schemas/SuspectId"
+        text:
+          type: string
+          minLength: 1
+          maxLength: 500
+    PublicSuspect:
+      type: object
+      additionalProperties: false
+      required: [id, displayName, publicDescription]
+      properties:
+        id:
+          $ref: "#/components/schemas/SuspectId"
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        publicDescription:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    Clue:
+      type: object
+      additionalProperties: false
+      required: [id, title, text, discoveredAt]
+      properties:
+        id:
+          $ref: "#/components/schemas/ClueId"
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        discoveredAt:
+          $ref: "#/components/schemas/DateTime"
+    DialogueMode:
+      type: string
+      enum: [catalog, free_text]
+    AnswerSource:
+      type: string
+      enum: [reference, ai, fallback]
+    SuspectDialogue:
+      type: object
+      additionalProperties: false
+      required: [id, suspectId, mode, questionId, questionText, answerText, answerSource, askedBy, createdAt]
+      properties:
+        id:
+          $ref: "#/components/schemas/DialogueId"
+        suspectId:
+          $ref: "#/components/schemas/SuspectId"
+        mode:
+          $ref: "#/components/schemas/DialogueMode"
+        questionId:
+          anyOf:
+            - $ref: "#/components/schemas/QuestionId"
+            - type: "null"
+        questionText:
+          type: string
+          minLength: 1
+          maxLength: 500
+        answerText:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        answerSource:
+          $ref: "#/components/schemas/AnswerSource"
+        askedBy:
+          $ref: "#/components/schemas/PublicUser"
+        createdAt:
+          $ref: "#/components/schemas/DateTime"
+    FinalSubmission:
+      type: object
+      additionalProperties: false
+      required: [suspectId, submittedBy, submittedAt]
+      properties:
+        suspectId:
+          $ref: "#/components/schemas/SuspectId"
+        submittedBy:
+          $ref: "#/components/schemas/PublicUser"
+        submittedAt:
+          $ref: "#/components/schemas/DateTime"
+    CaseResolution:
+      type: object
+      additionalProperties: false
+      required: [suspectId, title, explanation]
+      properties:
+        suspectId:
+          $ref: "#/components/schemas/SuspectId"
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        explanation:
+          type: string
+          minLength: 1
+          maxLength: 8000
+    GameResult:
+      type: object
+      additionalProperties: false
+      required: [verdict, awardedPoints, maximumPoints, feedback, resolution]
+      properties:
+        verdict:
+          type: string
+          enum: [correct, incorrect]
+        awardedPoints:
+          type: integer
+          minimum: 0
+        maximumPoints:
+          type: integer
+          minimum: 0
+        feedback:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        resolution:
+          $ref: "#/components/schemas/CaseResolution"
+    GamePhase:
+      type: string
+      enum: [investigating, completed, abandoned]
+    GameSnapshot:
+      type: object
+      additionalProperties: false
+      required: [sessionId, roomId, caseId, caseVersion, phase, version, members, suspects, availableQuestions, publicClues, privateClues, dialogues, finalSubmission, result, startedAt, finishedAt]
+      properties:
+        sessionId:
+          $ref: "#/components/schemas/SessionId"
+        roomId:
+          $ref: "#/components/schemas/RoomId"
+        caseId:
+          $ref: "#/components/schemas/CaseId"
+        caseVersion:
+          $ref: "#/components/schemas/CaseVersion"
+        phase:
+          $ref: "#/components/schemas/GamePhase"
+        version:
+          $ref: "#/components/schemas/Version"
+        members:
+          type: array
+          minItems: 2
+          maxItems: 4
+          items:
+            $ref: "#/components/schemas/RoomMember"
+        suspects:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/PublicSuspect"
+        availableQuestions:
+          type: array
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/CatalogQuestion"
+        publicClues:
+          type: array
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/Clue"
+        privateClues:
+          type: array
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/Clue"
+        dialogues:
+          type: array
+          maxItems: 2000
+          items:
+            $ref: "#/components/schemas/SuspectDialogue"
+        finalSubmission:
+          anyOf:
+            - $ref: "#/components/schemas/FinalSubmission"
+            - type: "null"
+        result:
+          anyOf:
+            - $ref: "#/components/schemas/GameResult"
+            - type: "null"
+        startedAt:
+          $ref: "#/components/schemas/DateTime"
+        finishedAt:
+          anyOf:
+            - $ref: "#/components/schemas/DateTime"
+            - type: "null"
+    GameResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/GameSnapshot"
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [status]
+          properties:
+            status:
+              type: string
+              const: ok
+    ReadinessResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [status, checks]
+          properties:
+            status:
+              type: string
+              enum: [ready, not_ready]
+            checks:
+              type: object
+              additionalProperties: false
+              required: [mongodb]
+              properties:
+                mongodb:
+                  type: string
+                  enum: [up, down]

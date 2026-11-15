@@ -8,10 +8,12 @@ Ein spielbarer MVP für 2–4 Freunde:
 - Ein Host erstellt einen privaten Spielraum.
 - Weitere Spieler treten per Einladungscode bei.
 - Die Gruppe startet einen vordefinierten Kriminalfall.
-- Spieler befragen KI-gesteuerte Verdächtige.
-- Die Game Engine verwaltet Wahrheit, Hinweise, Freischaltungen und Spielphasen deterministisch.
+- Spieler befragen Verdächtige über einen vollständig spielbaren, kuratierten Fragenkatalog; KI-Formulierungen sind optional.
+- Die Game Engine verwaltet Wahrheit, Hinweise, Freischaltungen und Spielphasen deterministisch – unabhängig vom Provider.
 - Alle Spieler sehen denselben freigegebenen Spielzustand.
 - Am Ende gibt die Gruppe gemeinsam eine Lösung ab.
+
+Der komplette Spielablauf funktioniert ohne LLM, API-Schlüssel und KI-Kosten. Private Multiplayer-Räume, Backend und MongoDB bleiben erforderlich; ein serverloser Offline-Modus ist nicht Teil des MVP.
 
 **Nicht Ziel des MVP:** offene Creator-Plattform, öffentlicher Matchmaking-Modus, Voice-/Videochat, Echtzeit-Action, eigene KI-Modelle, Microservices oder mehrere parallel laufende Serverinstanzen.
 
@@ -45,13 +47,22 @@ Die Laufzeitregeln, Agentenabbildung und Worktree-Isolierung sind in `orchestrat
 - Validierung: Zod
 - API-Vertrag: OpenAPI 3.1
 - Tests: Vitest, Supertest, Playwright
-- KI: austauschbarer LLM-Provider-Adapter; initial OpenAI API
+- KI: optionaler, austauschbarer LLM-Provider-Adapter; initial OpenAI API; ohne Konfiguration wird kein Provider aufgerufen
 - Monorepo: pnpm workspaces
 - Deployment: zunächst ein Frontend-Host und ein Backend-Host; konkrete Anbieter nach Verfügbarkeit/Region auswählen
 
 ## Wichtige Leitentscheidung
 
-Die KI ist **nicht** die Quelle der Wahrheit. Der Server und die Game Engine besitzen den kanonischen Spielzustand. Das Modell darf Dialoge formulieren und innerhalb eng definierter Grenzen Charakterverhalten darstellen. Es darf weder Täter noch Fakten, Hinweise, Berechtigungen oder Spielphasen frei verändern.
+Die KI ist **optional und nicht die Quelle der Wahrheit**. Jeder Fall kann allein mit Katalogfragen und fest gepflegten Referenzantworten abgeschlossen werden. Server und Game Engine besitzen den kanonischen Spielzustand. Ein Modell darf Dialoge formulieren und innerhalb eng definierter Grenzen Charakterverhalten darstellen. Es darf weder Täter noch Fakten, Hinweise, Berechtigungen oder Spielphasen verändern. Dieselbe Katalogaktion muss mit und ohne KI identische kanonische Hinweise, Folgefragen, Phasen und Bewertungen erzeugen. Optionale Freitext-KI ist separat, actor-only und nicht abschlussrelevant. Die Entscheidungen sind in `docs/adr/0001-ki-dialoge-optional.md` (Katalog), `docs/adr/0002-http-only-auth-sessions.md` (Auth) und `docs/adr/0003-idempotenz-versionierung-konsistenz.md` (Konsistenz) dokumentiert.
+
+### Verträge
+
+- `contracts/openapi.yaml`: konkrete REST-Operationen, Schemas, Cookie-Auth und Fehler
+- `contracts/shared-types.md`: normative Shared-DTOs, Zod-Regeln, Sichtbarkeiten und Invarianten
+- `contracts/events.md`: diskriminierte Socket-Requests/Acks, Eventhüllen, Reconnect und private Projektionen
+- `docs/DATABASE.md`: Persistenz, Indizes, Datenklassifikation und technische Aufbewahrung
+
+Der T001-Freeze wurde durch den Nutzer am 2026-11-15 ausdrücklich für die nachfolgende Umsetzung freigegeben; einzelne Folge-Tasks werden jeweils nach ihrer Abhängigkeits- und Freigabeprüfung gestartet. Die Markdown-/YAML-Verträge werden anschließend in T002 als TypeScript-/Zod-Contracts in `packages/shared` abgebildet.
 
 ## Verzeichnisübersicht
 
@@ -60,7 +71,7 @@ Die KI ist **nicht** die Quelle der Wahrheit. Der Server und die Game Engine bes
 - `orchestration/`: Koordination mehrerer Agenten
 - `agents/`: maßgebliche Rollenbeschreibungen und Zuständigkeiten
 - `skills/`: wiederverwendbare Spezialanweisungen
-- `docs/`: Produkt-, Architektur- und Betriebsdokumentation
+- `docs/`: Produkt-, Architektur-, Betriebsdokumentation und ADRs
 - `specs/`: fachliche Spezifikationen
 - `tasks/`: umsetzbare Tickets mit Akzeptanzkriterien
 - `contracts/`: gemeinsame Schnittstellenkonventionen

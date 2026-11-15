@@ -13,7 +13,7 @@ Danach:
 - T005 startet nach T003.
 - T006 startet nach T003 und T005.
 - T008 startet nach T007.
-- T009 startet nach T004, T006, T007 und T008.
+- T009 startet nach T004, T006 und T007. Der vollständige Katalogpfad hängt nicht von T008 ab.
 - T010 startet nach der Integration von T002–T009.
 - T011 startet nach QA-Abnahme.
 

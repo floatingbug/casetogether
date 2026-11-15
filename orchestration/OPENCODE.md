@@ -46,7 +46,7 @@ Für jeden schreibenden Fachauftrag gilt:
 4. Alle Änderungen und Testläufe dieses Auftrags erfolgen in diesem Worktree. Neue Konfiguration und `AGENTS.md` gelten auch dort.
 5. Die Übergabe nennt Worktree-Pfad, Branch, geänderte Dateien, Testbefehle und Ergebnisse. Der Orchestrator prüft den realen Diff und die Tests vor einer Integration.
 
-Rein lesende Recherchen brauchen keinen Worktree, dürfen aber keine Projektdateien verändern. Falls die Laufzeit keine Worktree-/Session-Move-Werkzeuge bereitstellt oder der Baseline-Commit fehlt, meldet der Agent den Arbeitsauftrag als blockiert. Er weicht nicht ungefragt auf das gemeinsame Arbeitsverzeichnis aus.
+Rein lesende Recherchen brauchen keinen Worktree, dürfen aber keine Projektdateien verändern. Falls die Laufzeit keine Worktree-/Session-Move-Werkzeuge bereitstellt oder der Baseline-Commit fehlt, meldet der Agent den Arbeitsauftrag als blockiert. Er weicht nicht ungefragt auf das gemeinsame Arbeitsverzeichnis aus. Schlägt das native Worktree-Werkzeug technisch fehl, prüft der Orchestrator den Zustand und darf nach ausdrücklicher Nutzerfreigabe einen äquivalenten `git worktree add`-Befehl für den vorgesehenen Task-Branch verwenden. Anschließend wird die Session mit dem nativen Move-Werkzeug in den verifizierten Worktree verschoben; das Fehlschlagen wird nicht durch blindes Wiederholen oder Arbeiten in `main` umgangen.
 
 OpenCode legt Projekt-Worktrees unter `.worktrees/` ab; dieser Pfad ist von Git und vom Projekt-Watcher ausgenommen. Kein Agent committet, mergt, rebased, resettet oder pusht ohne ausdrückliche aktuelle Nutzerfreigabe. Die Integration erfolgt erst nach Review durch den Orchestrator und niemals als automatischer Commit auf `main`.
 

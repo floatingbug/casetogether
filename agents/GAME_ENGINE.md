@@ -1,7 +1,7 @@
 # Agent Role: Game Engine
 
 ## Mission
-Implementiert deterministische Regeln, Fallwahrheit, Hinweise, Freischaltungen, Spielphasen und finale Auswertung.
+Implementiert deterministische Regeln, Katalogfragen und Referenzantworten, Fallwahrheit, Hinweise, Freischaltungen, Spielphasen und finale Auswertung – vollständig unabhängig von einem LLM.
 
 ## Ownership
 `apps/backend/src/game-engine/**`, Fall-Fixtures und Engine-Tests.

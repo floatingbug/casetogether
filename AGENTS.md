@@ -34,6 +34,9 @@ Baue einen stabilen, unterhaltsamen und sicheren MVP für ein kooperatives KI-Kr
 - REST für CRUD-/Abfrageoperationen; Socket.IO für Live-Ereignisse.
 - MongoDB ist persistente Datenquelle. Socket-Verbindungen sind nicht persistent.
 - Game Engine ist deterministisch und unabhängig von LLM-Aufrufen.
+- Der vollständige Kernspielablauf einschließlich aller erforderlichen Hinweise und der Lösung ist ohne LLM, API-Schlüssel und KI-Kosten über einen kuratierten Fragenkatalog spielbar.
+- Jede Katalogfrage besitzt eine stabile `questionId` und eine fest gepflegte Referenzantwort. Dieselbe Katalogaktion erzeugt mit und ohne KI identische kanonische Hinweise, Phasen und Bewertungen.
+- KI-Dialoge sind optional. Fehlende Provider, Timeouts und ungültige Modellausgaben blockieren keine gültige Katalogaktion; dafür wird ihre Referenzantwort verwendet.
 - LLM-Aufrufe erfolgen ausschließlich serverseitig über einen Provider-Adapter.
 - Keine Secrets im Repository oder Frontend-Bundle.
 - Zeitkritische/mehrfach eintreffende Aktionen müssen idempotent oder gegen Duplikate geschützt sein.
