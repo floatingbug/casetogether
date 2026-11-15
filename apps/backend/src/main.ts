@@ -1,23 +1,74 @@
 import { createApp } from './app.js';
-import { readBackendConfig } from './config.js';
+import { readBackendRuntimeConfig } from './config.js';
+import { MongoDatabase } from './database/mongodb.js';
+import {
+  createIdentityService,
+  type IdentityService,
+} from './modules/identity/identity-service.js';
 
-const config = readBackendConfig();
-const app = createApp({
-  allowedOrigins: config.allowedOrigins,
-  nodeEnv: config.nodeEnv,
-});
-const server = app.listen(config.port, '127.0.0.1', () => {
-  console.log(JSON.stringify({ event: 'backend_listening', port: config.port }));
-});
+async function start(): Promise<void> {
+  const config = readBackendRuntimeConfig();
+  const mongoDatabase = new MongoDatabase(config.mongodbUri);
+  await mongoDatabase.connect();
 
-function shutdown(): void {
-  server.close((error) => {
-    if (error !== undefined) {
-      console.error(JSON.stringify({ event: 'backend_shutdown_failed' }));
+  let identityService: IdentityService;
+  try {
+    identityService = await createIdentityService({
+      database: mongoDatabase.database,
+      sessionSecret: config.sessionSecret,
+    });
+  } catch (error) {
+    await mongoDatabase.close();
+    throw error;
+  }
+
+  const app = createApp({
+    allowedOrigins: config.allowedOrigins,
+    nodeEnv: config.nodeEnv,
+    mongoDbStatus: () => mongoDatabase.ping(),
+    identityService,
+  });
+  const server = app.listen(config.port, '127.0.0.1', () => {
+    console.log(JSON.stringify({ event: 'backend_listening', port: config.port }));
+  });
+  let shuttingDown = false;
+
+  const shutdown = async (): Promise<void> => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error === undefined) {
+            resolve();
+          } else {
+            reject(error);
+          }
+        });
+      });
+    } catch {
+      console.error(JSON.stringify({ event: 'backend_http_shutdown_failed' }));
       process.exitCode = 1;
     }
-  });
+
+    try {
+      await mongoDatabase.close();
+    } catch {
+      console.error(JSON.stringify({ event: 'backend_database_shutdown_failed' }));
+      process.exitCode = 1;
+    }
+  };
+
+  process.on('SIGINT', () => void shutdown());
+  process.on('SIGTERM', () => void shutdown());
 }
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+try {
+  await start();
+} catch {
+  console.error(JSON.stringify({ event: 'backend_start_failed' }));
+  process.exitCode = 1;
+}

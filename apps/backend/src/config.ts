@@ -1,15 +1,28 @@
-import type { CookieOptions } from 'express';
+import { assertValidSessionSecret } from './modules/identity/secret.js';
 
 export const DEFAULT_FRONTEND_ORIGIN = 'http://localhost:5173';
 export const AUTH_COOKIE_NAME = 'ct_session';
 
 export type NodeEnvironment = 'development' | 'test' | 'production';
 
+export interface AuthCookieConfig {
+  name: typeof AUTH_COOKIE_NAME;
+  httpOnly: true;
+  sameSite: 'lax';
+  secure: boolean;
+  path: '/';
+}
+
 export interface BackendConfig {
   nodeEnv: NodeEnvironment;
   port: number;
   allowedOrigins: readonly string[];
-  authCookie: CookieOptions & { name: typeof AUTH_COOKIE_NAME };
+  authCookie: AuthCookieConfig;
+}
+
+export interface BackendRuntimeConfig extends BackendConfig {
+  mongodbUri: string;
+  sessionSecret: string;
 }
 
 export function parseAllowedOrigins(value: string): readonly string[] {
@@ -66,5 +79,32 @@ export function readBackendConfig(environment: NodeJS.ProcessEnv = process.env):
       secure: nodeEnv === 'production',
       path: '/',
     },
+  };
+}
+
+function readMongoDbUri(value: string | undefined): string {
+  if (
+    value === undefined ||
+    value === '' ||
+    (!value.startsWith('mongodb://') && !value.startsWith('mongodb+srv://'))
+  ) {
+    throw new Error('MONGODB_URI must be a configured MongoDB connection URI');
+  }
+  return value;
+}
+
+export function readBackendRuntimeConfig(
+  environment: NodeJS.ProcessEnv = process.env,
+): BackendRuntimeConfig {
+  const sessionSecret = environment['SESSION_SECRET'];
+  if (sessionSecret === undefined) {
+    throw new Error('SESSION_SECRET is required for auth sessions');
+  }
+  assertValidSessionSecret(sessionSecret);
+
+  return {
+    ...readBackendConfig(environment),
+    mongodbUri: readMongoDbUri(environment['MONGODB_URI']),
+    sessionSecret,
   };
 }

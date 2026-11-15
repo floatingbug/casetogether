@@ -4,6 +4,7 @@ import {
   HealthResponseSchema,
   ReadinessResponseSchema,
   type ErrorCode,
+  type ErrorDetails,
 } from '@casetogether/shared';
 import cors, { type CorsOptions } from 'cors';
 import express, {
@@ -14,26 +15,50 @@ import express, {
   type Response,
 } from 'express';
 import helmet from 'helmet';
-import { DEFAULT_FRONTEND_ORIGIN, parseAllowedOrigins, type NodeEnvironment } from './config.js';
+import { ApplicationError } from './application-error.js';
+import {
+  DEFAULT_FRONTEND_ORIGIN,
+  parseAllowedOrigins,
+  readBackendConfig,
+  type NodeEnvironment,
+} from './config.js';
+import type { MongoDbStatus } from './database/mongodb.js';
+import { limitAuthRequestsByIp } from './http/auth-rate-limit.js';
+import { createIdentityRoutes } from './http/identity-routes.js';
+import type { IdentityService } from './modules/identity/identity-service.js';
 
 export const JSON_PAYLOAD_LIMIT = '16kb';
-export type MongoDbStatus = 'up' | 'down';
+export type { MongoDbStatus } from './database/mongodb.js';
 
 export interface AppOptions {
   allowedOrigins?: readonly string[];
   nodeEnv?: NodeEnvironment;
   mongoDbStatus?: () => Promise<MongoDbStatus>;
+  identityService?: IdentityService;
+  logInternalError?: (requestId: string) => void;
 }
 
-function sendError(response: Response, status: number, code: ErrorCode, message: string): void {
+function sendError(
+  response: Response,
+  status: number,
+  code: ErrorCode,
+  message: string,
+  details?: ErrorDetails,
+): string {
+  const requestId = randomUUID();
   const body = ErrorResponseSchema.parse({
     error: {
       code,
       message,
-      requestId: randomUUID(),
+      requestId,
+      ...(details === undefined ? {} : { details }),
     },
   });
+  if (details?.retryAfterSeconds !== undefined) {
+    response.setHeader('Retry-After', String(details.retryAfterSeconds));
+  }
   response.status(status).json(body);
+  return requestId;
 }
 
 function createCorsOptions(allowedOrigins: ReadonlySet<string>): CorsOptions {
@@ -88,24 +113,55 @@ function errorProperty(error: unknown, property: string): unknown {
   return Reflect.get(error, property);
 }
 
-const errorHandler: ErrorRequestHandler = (error: unknown, _request, response, next) => {
-  if (response.headersSent) {
-    next(error);
-    return;
-  }
-  if (
-    errorProperty(error, 'status') === 413 ||
-    errorProperty(error, 'type') === 'entity.too.large'
-  ) {
-    sendError(response, 413, 'PAYLOAD_TOO_LARGE', 'JSON payload exceeds the 16 KiB limit');
-    return;
-  }
-  if (error instanceof SyntaxError && errorProperty(error, 'status') === 400) {
-    sendError(response, 400, 'VALIDATION_ERROR', 'Malformed JSON request body');
-    return;
-  }
-  sendError(response, 500, 'INTERNAL_ERROR', 'Internal server error');
+const statusByErrorCode: Record<ErrorCode, number> = {
+  VALIDATION_ERROR: 400,
+  UNAUTHENTICATED: 401,
+  INVALID_CREDENTIALS: 401,
+  CSRF_REJECTED: 403,
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  EMAIL_ALREADY_REGISTERED: 409,
+  INVITATION_INVALID: 400,
+  ROOM_FULL: 409,
+  ROOM_NOT_JOINABLE: 409,
+  ROOM_CLOSED: 410,
+  QUESTION_NOT_AVAILABLE: 409,
+  INVALID_STATE_TRANSITION: 409,
+  VERSION_CONFLICT: 409,
+  IDEMPOTENCY_KEY_REUSED: 409,
+  OPERATION_IN_PROGRESS: 409,
+  RATE_LIMITED: 429,
+  PAYLOAD_TOO_LARGE: 413,
+  AI_UNAVAILABLE: 503,
+  INTERNAL_ERROR: 500,
 };
+
+function createErrorHandler(logInternalError: (requestId: string) => void): ErrorRequestHandler {
+  return (error: unknown, _request, response, next) => {
+    if (response.headersSent) {
+      next(error);
+      return;
+    }
+    if (
+      errorProperty(error, 'status') === 413 ||
+      errorProperty(error, 'type') === 'entity.too.large'
+    ) {
+      sendError(response, 413, 'PAYLOAD_TOO_LARGE', 'JSON payload exceeds the 16 KiB limit');
+      return;
+    }
+    if (error instanceof SyntaxError && errorProperty(error, 'status') === 400) {
+      sendError(response, 400, 'VALIDATION_ERROR', 'Malformed JSON request body');
+      return;
+    }
+    if (error instanceof ApplicationError && error.code !== 'INTERNAL_ERROR') {
+      sendError(response, statusByErrorCode[error.code], error.code, error.message, error.details);
+      return;
+    }
+
+    const requestId = sendError(response, 500, 'INTERNAL_ERROR', 'Internal server error');
+    logInternalError(requestId);
+  };
+}
 
 const unavailableMongoDb = async (): Promise<MongoDbStatus> => 'down';
 
@@ -114,6 +170,12 @@ export function createApp(options: AppOptions = {}): Express {
     parseAllowedOrigins((options.allowedOrigins ?? [DEFAULT_FRONTEND_ORIGIN]).join(',')),
   );
   const mongoDbStatus = options.mongoDbStatus ?? unavailableMongoDb;
+  const nodeEnv = options.nodeEnv ?? 'development';
+  const logInternalError =
+    options.logInternalError ??
+    ((requestId: string) => {
+      console.error(JSON.stringify({ event: 'request_failed', code: 'INTERNAL_ERROR', requestId }));
+    });
   const app = express();
 
   app.disable('x-powered-by');
@@ -134,11 +196,14 @@ export function createApp(options: AppOptions = {}): Express {
           styleSrc: ["'none'"],
         },
       },
-      ...(options.nodeEnv === 'production' ? {} : { strictTransportSecurity: false }),
+      ...(nodeEnv === 'production' ? {} : { strictTransportSecurity: false }),
     }),
   );
   app.use(cors(createCorsOptions(allowedOrigins)));
   app.use(createOriginProtection(allowedOrigins));
+  if (options.identityService !== undefined) {
+    app.use('/api/v1/auth', limitAuthRequestsByIp(options.identityService));
+  }
   app.use(express.json({ limit: JSON_PAYLOAD_LIMIT, strict: true }));
 
   app.get('/api/v1/health', (_request, response) => {
@@ -150,7 +215,6 @@ export function createApp(options: AppOptions = {}): Express {
     try {
       mongodb = await mongoDbStatus();
     } catch {
-      // A failed required dependency is not ready; internals never enter the response.
       mongodb = 'down';
     }
 
@@ -162,10 +226,15 @@ export function createApp(options: AppOptions = {}): Express {
     response.status(mongodb === 'up' ? 200 : 503).json(body);
   });
 
+  if (options.identityService !== undefined) {
+    const cookieConfiguration = readBackendConfig({ NODE_ENV: nodeEnv }).authCookie;
+    app.use('/api/v1', createIdentityRoutes(options.identityService, cookieConfiguration));
+  }
+
   app.use((_request, response) => {
     sendError(response, 404, 'NOT_FOUND', 'Resource not found');
   });
-  app.use(errorHandler);
+  app.use(createErrorHandler(logInternalError));
 
   return app;
 }

@@ -12,14 +12,19 @@
   },
   "dependencies": {
     "@casetogether/shared": "workspace:*",
+    "@node-rs/argon2": "2.2.2",
+    "cookie": "2.0.2",
     "cors": "2.8.5",
     "express": "5.1.0",
-    "helmet": "8.1.0"
+    "helmet": "8.1.0",
+    "mongodb": "7.9.0",
+    "zod": "4.1.12"
   },
   "devDependencies": {
     "@types/cors": "2.8.19",
     "@types/express": "5.0.5",
     "@types/supertest": "6.0.3",
+    "mongodb-memory-server-core": "11.3.0",
     "supertest": "7.1.4",
     "tsx": "4.20.6"
   }
