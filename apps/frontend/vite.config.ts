@@ -10,6 +10,11 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 5173,
     strictPort: true,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:3000',
+      },
+    },
   },
   preview: {
     host: '127.0.0.1',
@@ -20,5 +25,7 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['test/**/*.test.ts'],
     css: false,
+    restoreMocks: true,
+    setupFiles: ['./test/setup.ts'],
   },
 });

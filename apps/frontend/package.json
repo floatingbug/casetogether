@@ -8,13 +8,19 @@
     "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
     "preview": "vite preview --host 127.0.0.1 --port 5173 --strictPort",
     "test": "vitest run",
+    "pretest:e2e": "pnpm --filter @casetogether/shared build",
+    "test:e2e": "playwright test",
     "typecheck": "vue-tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@casetogether/shared": "workspace:*",
-    "vue": "3.5.24"
+    "pinia": "3.0.4",
+    "vue": "3.5.24",
+    "vue-router": "4.6.4",
+    "zod": "4.1.12"
   },
   "devDependencies": {
+    "@playwright/test": "1.65.1",
     "@vitejs/plugin-vue": "6.0.1",
     "@vue/test-utils": "2.4.6",
     "jsdom": "26.1.0",

@@ -39,6 +39,12 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Install Playwright Chromium
+        run: pnpm --filter @casetogether/frontend exec playwright install --with-deps chromium
+
+      - name: Frontend browser smoke tests
+        run: pnpm --filter @casetogether/frontend test:e2e
+
       - name: Validate OpenAPI contract
         run: pnpm contracts:check
 
