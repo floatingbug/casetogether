@@ -6,7 +6,9 @@ import {
   ClientRequestIdSchema,
   ChatSendRequestSchema,
   ErrorResponseSchema,
+  GameEventSchema,
   RoomEventSchema,
+  RoomJoinAckDataSchema,
   RoomJoinAckSchema,
   RoomJoinRequestSchema,
   RoomLeaveAckSchema,
@@ -14,9 +16,12 @@ import {
   RoomSyncAckSchema,
   RoomSyncRequestSchema,
   SocketAckFailureSchema,
+  SuspectQuestionAckSchema,
+  SuspectQuestionRequestSchema,
   UserIdSchema,
   type PublicUser,
   type RoomId,
+  type RoomJoinAckData,
   type RoomPresenceEvent,
   type UserId,
 } from '@casetogether/shared';
@@ -27,6 +32,12 @@ import type { AuthCookieConfig } from '../config.js';
 import type { Db } from 'mongodb';
 import type { IdentityService } from '../modules/identity/identity-service.js';
 import type { RoomService } from '../modules/rooms/room-service.js';
+import type { DialogueService } from '../modules/dialogue/dialogue-service.js';
+import type { GameSessionService } from '../modules/game-sessions/game-session-service.js';
+import {
+  parseGamePublication,
+  type GamePublication,
+} from '../modules/game-sessions/publication.js';
 import type { Clock } from '../modules/identity/clock.js';
 import { createRealtimeApplication, type RealtimeApplication } from './application.js';
 import {
@@ -93,6 +104,8 @@ export class RealtimeGateway {
   private readonly allowedOrigins: ReadonlySet<string>;
   private readonly logInternalError: InternalErrorLogger;
   private readonly connections = new Map<string, ConnectionState>();
+  private gameSessions: Pick<GameSessionService, 'getSession'> | undefined;
+  private dialogue: Pick<DialogueService, 'askQuestion'> | undefined;
   private io: SocketIOServer | undefined;
 
   constructor(options: {
@@ -118,6 +131,17 @@ export class RealtimeGateway {
       allowedOrigins: options.allowedOrigins,
       logInternalError: this.logInternalError,
     });
+  }
+
+  configureGameServices(options: {
+    gameSessions: Pick<GameSessionService, 'getSession'>;
+    dialogue: Pick<DialogueService, 'askQuestion'>;
+  }): void {
+    if (this.gameSessions !== undefined || this.dialogue !== undefined || this.io !== undefined) {
+      throw new Error('Game services must be configured before attaching realtime');
+    }
+    this.gameSessions = options.gameSessions;
+    this.dialogue = options.dialogue;
   }
 
   attach(server: HttpServer): void {
@@ -195,6 +219,24 @@ export class RealtimeGateway {
     }
   }
 
+  async publishGamePublication(input: GamePublication): Promise<void> {
+    const publication = parseGamePublication(input);
+    if (publication.kind === 'start') {
+      await this.publishRoomPublication({
+        recipientUserIds: publication.deliveries.map((delivery) => delivery.recipientUserId),
+        event: publication.roomEvent,
+      });
+    }
+    for (const delivery of publication.deliveries) {
+      this.emitToRecipients(
+        publication.roomId,
+        [delivery.recipientUserId],
+        'game:event',
+        GameEventSchema.parse(delivery.event),
+      );
+    }
+  }
+
   disconnectSession(cookieValue: string | undefined): void {
     if (cookieValue === undefined || this.io === undefined) {
       return;
@@ -237,7 +279,7 @@ export class RealtimeGateway {
           await this.evictFromRoom(input.roomId, result.evictedSocketIds);
           await socket.join(roomChannel(input.roomId));
           this.emitPresence(result.presenceEvent);
-          return result.data;
+          return this.withGameSnapshot(actor, result.data);
         },
       );
     });
@@ -251,7 +293,7 @@ export class RealtimeGateway {
           const result = await this.application.syncRoom(actor, input.roomId);
           await this.evictFromRoom(input.roomId, result.evictedSocketIds);
           this.emitPresence(result.presenceEvent);
-          return result.data;
+          return this.withGameSnapshot(actor, result.data);
         },
       );
     });
@@ -283,8 +325,25 @@ export class RealtimeGateway {
         },
       );
     });
+    socket.on('suspect:question', (...args: unknown[]) => {
+      this.handleCommand(
+        socket,
+        SuspectQuestionRequestSchema,
+        SuspectQuestionAckSchema,
+        args,
+        async (actor, input) => {
+          if (this.dialogue === undefined) {
+            throw new Error('Dialogue service is not configured');
+          }
+          const result = await this.dialogue.askQuestion(actor, input);
+          return result.data;
+        },
+      );
+    });
     socket.onAny((event, ...args: unknown[]) => {
-      if (['room:join', 'room:sync', 'room:leave', 'chat:send'].includes(event)) {
+      if (
+        ['room:join', 'room:sync', 'room:leave', 'chat:send', 'suspect:question'].includes(event)
+      ) {
         return;
       }
       this.rejectUnknownEvent(socket, args);
@@ -371,6 +430,21 @@ export class RealtimeGateway {
           this.disconnectSession(this.connections.get(socket.id)?.cookieValue);
         }
       });
+  }
+
+  private async withGameSnapshot(
+    actor: PublicUser,
+    data: RoomJoinAckData,
+  ): Promise<RoomJoinAckData> {
+    const sessionId = data.room.room.activeSessionId;
+    if (sessionId === null) {
+      return RoomJoinAckDataSchema.parse({ ...data, game: null });
+    }
+    if (this.gameSessions === undefined) {
+      throw new Error('Game-session service is not configured');
+    }
+    const game = await this.gameSessions.getSession(actor, sessionId);
+    return RoomJoinAckDataSchema.parse({ ...data, game });
   }
 
   private async authenticateCommand(socket: Socket): Promise<PublicUser> {

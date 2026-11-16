@@ -2,6 +2,11 @@ import { createApp } from './app.js';
 import { readBackendRuntimeConfig } from './config.js';
 import { MongoDatabase } from './database/mongodb.js';
 import {
+  createGameSessionApplication,
+  provisionDefaultCases,
+} from './modules/game-sessions/index.js';
+import type { GameSessionService } from './modules/game-sessions/game-session-service.js';
+import {
   createIdentityService,
   type IdentityService,
 } from './modules/identity/identity-service.js';
@@ -15,6 +20,7 @@ async function start(): Promise<void> {
 
   let identityService: IdentityService;
   let roomService: RoomService;
+  let gameSessionService: GameSessionService;
   let realtimeGateway: RealtimeGateway;
   try {
     identityService = await createIdentityService({
@@ -29,6 +35,18 @@ async function start(): Promise<void> {
       cookieConfiguration: config.authCookie,
       allowedOrigins: config.allowedOrigins,
     });
+    const gameApplication = await createGameSessionApplication({
+      database: mongoDatabase.database,
+      publicationPort: {
+        publish: (publication) => realtimeGateway.publishGamePublication(publication),
+      },
+    });
+    gameSessionService = gameApplication.gameSessions;
+    await provisionDefaultCases(mongoDatabase.database);
+    realtimeGateway.configureGameServices({
+      gameSessions: gameApplication.gameSessions,
+      dialogue: gameApplication.dialogue,
+    });
   } catch (error) {
     await mongoDatabase.close();
     throw error;
@@ -40,6 +58,7 @@ async function start(): Promise<void> {
     mongoDbStatus: () => mongoDatabase.ping(),
     identityService,
     roomService,
+    gameSessionService,
     realtimeGateway,
   });
   const server = app.listen(config.port, '127.0.0.1', () => {

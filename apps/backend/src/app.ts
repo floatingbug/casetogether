@@ -25,8 +25,10 @@ import {
 import type { MongoDbStatus } from './database/mongodb.js';
 import { limitAuthRequestsByIp } from './http/auth-rate-limit.js';
 import { readAuthCookie } from './http/auth-cookies.js';
+import { createGameSessionRoutes } from './http/game-sessions/game-session-routes.js';
 import { createIdentityRoutes } from './http/identity-routes.js';
 import { createRoomRoutes } from './http/rooms/room-routes.js';
+import type { GameSessionService } from './modules/game-sessions/game-session-service.js';
 import type { IdentityService } from './modules/identity/identity-service.js';
 import type { RoomService } from './modules/rooms/room-service.js';
 import type { RealtimeGateway } from './realtime/gateway.js';
@@ -40,6 +42,7 @@ export interface AppOptions {
   mongoDbStatus?: () => Promise<MongoDbStatus>;
   identityService?: IdentityService;
   roomService?: RoomService;
+  gameSessionService?: GameSessionService;
   realtimeGateway?: Pick<RealtimeGateway, 'publishRoomPublication' | 'disconnectSession'>;
   logInternalError?: (requestId: string) => void;
 }
@@ -261,8 +264,18 @@ export function createApp(options: AppOptions = {}): Express {
         ),
       );
     }
-  } else if (options.roomService !== undefined) {
-    throw new Error('Room routes require the identity service');
+    if (options.gameSessionService !== undefined) {
+      app.use(
+        '/api/v1',
+        createGameSessionRoutes(
+          options.identityService,
+          options.gameSessionService,
+          cookieConfiguration,
+        ),
+      );
+    }
+  } else if (options.roomService !== undefined || options.gameSessionService !== undefined) {
+    throw new Error('Room and game-session routes require the identity service');
   }
 
   app.use((_request, response) => {

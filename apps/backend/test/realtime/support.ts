@@ -7,6 +7,11 @@ import { createApp } from '../../src/app.js';
 import { readBackendConfig } from '../../src/config.js';
 import type { Clock } from '../../src/modules/identity/clock.js';
 import {
+  createGameSessionApplication,
+  provisionDefaultCases,
+} from '../../src/modules/game-sessions/index.js';
+import type { GameSessionService } from '../../src/modules/game-sessions/game-session-service.js';
+import {
   createIdentityService,
   type IdentityService,
 } from '../../src/modules/identity/identity-service.js';
@@ -25,6 +30,7 @@ export interface RealtimeTestWorldOptions {
   database: Db;
   clock?: Clock;
   invitationGenerator?: InvitationCodeGenerator;
+  game?: boolean;
   logInternalError?: (requestId: string) => void;
 }
 
@@ -92,11 +98,28 @@ export class RealtimeTestWorld {
         ? {}
         : { logInternalError: options.logInternalError }),
     });
+    let gameSessionService: GameSessionService | undefined;
+    if (options.game === true) {
+      const gameApplication = await createGameSessionApplication({
+        database: options.database,
+        publicationPort: {
+          publish: (publication) => gateway.publishGamePublication(publication),
+        },
+        ...(options.clock === undefined ? {} : { clock: options.clock }),
+      });
+      gameSessionService = gameApplication.gameSessions;
+      await provisionDefaultCases(options.database);
+      gateway.configureGameServices({
+        gameSessions: gameApplication.gameSessions,
+        dialogue: gameApplication.dialogue,
+      });
+    }
     const app = createApp({
       allowedOrigins: [ALLOWED_ORIGIN],
       nodeEnv: 'test',
       identityService,
       roomService,
+      ...(gameSessionService === undefined ? {} : { gameSessionService }),
       realtimeGateway: gateway,
       ...(options.logInternalError === undefined
         ? {}

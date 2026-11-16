@@ -7,6 +7,7 @@ export {
   MongoGameSessionRoomRepository,
 } from './mongo-repositories.js';
 export { NoopGamePublicationPort } from './publication.js';
+export { provisionDefaultCases } from './provision.js';
 export type {
   GameActionResult,
   GamePublication,
