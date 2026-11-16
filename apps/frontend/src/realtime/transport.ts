@@ -78,6 +78,9 @@ export function createSocketTransport(listeners: SocketTransportListeners): Sock
     path: '/socket.io',
     withCredentials: true,
     autoConnect: false,
+    // Browser same-origin polling can omit Origin, which the server correctly rejects.
+    // Use WebSocket from the first handshake; do not fall back to long-polling.
+    transports: ['websocket'],
   });
   return new SocketIoTransport(socket, listeners);
 }
