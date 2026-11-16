@@ -10,6 +10,8 @@
     "test": "vitest run",
     "pretest:e2e": "pnpm --filter @casetogether/shared build",
     "test:e2e": "playwright test",
+    "pretest:e2e:fullstack": "pnpm --filter @casetogether/shared build",
+    "test:e2e:fullstack": "playwright test --config e2e/playwright.fullstack.config.ts",
     "typecheck": "vue-tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

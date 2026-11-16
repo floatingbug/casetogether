@@ -5,6 +5,7 @@ const PLAYWRIGHT_TEST_ORIGIN = `http://127.0.0.1:${PLAYWRIGHT_TEST_PORT}`;
 
 export default defineConfig({
   testDir: './e2e',
+  testIgnore: ['fullstack/**'],
   fullyParallel: true,
   forbidOnly: Boolean(process.env['CI']),
   retries: process.env['CI'] === 'true' ? 1 : 0,
