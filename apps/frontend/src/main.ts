@@ -3,6 +3,7 @@ import { createApp } from 'vue';
 import App from './App.vue';
 import { createAppRouter } from './router';
 import './style.css';
+import './play.css';
 
 const app = createApp(App);
 app.use(createPinia());

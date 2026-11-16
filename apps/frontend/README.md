@@ -1,9 +1,6 @@
-# CaseTogether Frontend (T004)
+# CaseTogether Frontend
 
-Vue-3-SPA mit Composition API, TypeScript strict, Vue Router und Pinia. Enthalten sind das
-responsive Grundlayout, Login, Registrierung, eine kleine geschützte Lobby-Ansicht sowie die
-Auth-REST-Clients. Räume, Fälle, Chat, Socket.IO und Spielaktionen bleiben bewusst späteren
-Tasks vorbehalten.
+Vue-3-SPA mit Composition API, TypeScript strict, Vue Router, Pinia und typisierten REST-/Socket.IO-Clients. Enthalten sind Registrierung/Login, private Räume, Lobby/Präsenz/Gruppenchat, Fallauswahl, Katalogbefragung, Hinweise und die serverbestätigte finale Abgabe.
 
 ## Entwicklung
 
@@ -13,79 +10,55 @@ Vom Repository-Stamm:
 pnpm --filter @casetogether/frontend dev
 ```
 
-Vite leitet `/api` lokal an `http://127.0.0.1:3000` weiter. Der Browser verwendet relative
-`/api/v1`-Pfade; es wird keine zusätzliche Frontend-URL- oder Secret-Konfiguration benötigt. Der
-Backend-Prozess muss die tatsächliche Frontend-Origin gemäß `docs/DEVELOPMENT.md` erlauben. Der
-Proxy verändert keine Origin- oder CSRF-Regeln und ersetzt keine serverseitige Authentifizierung.
+Vite leitet `/api` und `/socket.io` an `http://127.0.0.1:3000` weiter. Socket.IO verwendet den Standardpfad `/socket.io`, `withCredentials: true` und keine Auth-Tokens in Query oder Handshake-Body. Der Backend-Prozess muss die tatsächliche Frontend-Origin gemäß `docs/DEVELOPMENT.md` erlauben. Proxy und Origin sind kein Autorisierungsbeweis; Cookie, CSRF-/Origin-Prüfung, Mitgliedschaft, Hostrolle, Versionen und Spielregeln bleiben Serversache.
 
-## Auth- und Sicherheitsgrenzen
+## Struktur und Datenautorität
 
-- `src/api/http.ts` und `src/api/auth.ts` validieren Ausgabedaten mit den freigegebenen Shared-Zod-
-  Schemas. Request-Bodies werden ebenfalls mit `LoginRequestSchema` beziehungsweise
-  `RegisterRequestSchema` validiert und normalisiert.
-- Jeder Request verwendet `credentials: 'include'` und `Content-Type: application/json`. Logout
-  folgt dem OpenAPI-Vertrag ohne Request-Body und erwartet `204`. Es gibt keine Bearer-Header,
-  Session-Tokens in URLs, Local-/Session-Storage, Pinia oder eigenen Frontend-DTOs.
-- Erfolgs- (`{ data: ... }`) und Fehlerhüllen (`{ error: ... }`) werden strikt geprüft. Die UI
-  wählt verständliche deutsche Texte anhand des Fehlercodes und zeigt keine ungeprüften
-  Serverdetails. `INVALID_CREDENTIALS` bleibt generisch; nur die Registrierung bildet
-  `EMAIL_ALREADY_REGISTERED` gesondert ab.
-- Der Pinia-Store hält ausschließlich das vertragliche `PublicUser` (`id`, `displayName`) und
-  nichtprivate UI-Stati. `GET /me` entscheidet beim Bootstrap über den Auth-Status. Fehlende oder
-  nicht sichtbare Sitzungen (`UNAUTHENTICATED`/`NOT_FOUND`) räumen private Restdaten.
-- Logout versucht zuerst die serverseitige Abmeldung. Lokale Auth-/View-Daten werden anschließend
-  **immer** entfernt, auch bei `401`, `404`, `403`, `500` oder Netzwerkfehlern. Falls der Server
-  die Abmeldung nicht bestätigt, erscheint auf dem Login ausdrücklich ein Hinweis statt eines
-  falschen Server-Erfolgs.
-- Geschützte Navigation erfolgt über den Router-Guard. Login-Redirects akzeptieren ausschließlich
-  interne Pfade; externe URLs, protokollrelative Ziele, Backslashes und Steuerzeichen werden
-  verworfen. Die UI behauptet keine Hostrolle, Raummitgliedschaft, Berechtigung oder Session-Version.
-- Inhalte werden über normale Vue-Textinterpolation ausgegeben. Es gibt kein `v-html`, keine
-  Provider-/Backend-Secrets und keine serverseitigen Falltypen im Frontend.
-- Ladezustände verhindern doppelte Form- und Logout-Absendungen. `ConnectivityNotice` meldet
-  Offline-/Reconnect-Ereignisse; API-Ausfälle erhalten einen separaten, nicht sensitiven Fehlertext.
+- `src/api/http.ts` kapselt Fetch mit JSON, `credentials: 'include'` und strikten Shared-Fehler- und Erfolgshüllen.
+- `src/api/auth.ts`, `rooms.ts`, `cases.ts` und `game-sessions.ts` sind getrennte REST-Services. Komponenten enthalten keine Fetch-Logik.
+- `src/realtime/transport.ts` kapselt Socket.IO. `client.ts` validiert Requests und Pflicht-Acks und normalisiert `connect_error.data.error` sowie den initialen Long-Poll-`ErrorResponse`. Transport-Fehlertexte sind kein fachlicher Steuerkanal.
+- `src/realtime/client-state.ts` verwaltet unabhängig Room-Version, Game-Version, unversionierte Präsenz und Chat-IDs/Chronologie. Events/Acks/Snapshots werden nach IDs und Versionen dedupliziert. Nur `v + 1`-Deltas werden nach erneutem kompletten `GameSnapshotSchema`-Check angewendet. Lücken und Schemafehler führen zu `room:sync` oder autoritativen REST-Snapshots; ältere Daten ersetzen keinen neueren Stand. Start- und terminale Events tragen vollständige Snapshots.
+- `src/stores/auth.ts` enthält ausschließlich das vertragliche `PublicUser` und Auth-UI-Zustände. `src/stores/game.ts` enthält nur die aktuelle, für den angemeldeten Nutzer autorisierte Room-/Game-Projektion und flüchtige Aktions-/Verbindungszustände. Nichts davon wird persistiert. Logout/Leave/Reset verwirft private Projektionen.
+- `src/components/` und `src/views/` rendern Serverdaten über Vue-Textinterpolation. Es gibt kein `v-html`, keine Client-Bewertung, keine Frontend-Version von Engine-Regeln und keine Anzeige einer Auflösung vor einem bestätigten `completed`-Snapshot.
 
-## Tests und ausdrückliche Integrationsgrenze
+Nach `connect` folgt regulär `room:join`. Ein unbestätigter `room:leave` behält exakt Request-ID und Payload und wird nach Reconnect **direkt ohne vorheriges Join/Sync** wiederholt; nur das minimale Leave-Receipt beendet diesen Pfad. Andere unbestätigte Actions behalten ebenfalls ihre Request-ID. Nach einem definitiven `VERSION_CONFLICT` ersetzt ein Snapshot den aktuellen Stand; eine bewusst neue fachliche Aktion erhält neue UUID und Expected-Version.
 
-Unit- und Component-Tests verwenden ausschließlich vertragstreue `fetch`-Doppel mit denselben
-JSON-/Status-/Fehlerformaten wie OpenAPI und die Shared-Zod-Schemas. Playwright startet echte
-Chromium-Browser und Vite, fängt aber `/me`, `/auth/login`, `/auth/logout` und `/auth/register`
-per Route-Interception ab. Damit werden Desktop und ein mobiles Viewport, geschützte Redirects,
-Login, Registrierung, Logout, CSRF- und `NOT_FOUND`-Fälle sowie leerer Browser-Storage geprüft.
+## Einladungen und verlorene Secrets
 
-**T003 ist in diesem Worktree nicht integriert.** Diese Tests starten weder Backend noch MongoDB
-und belegen keine produktive Cookie-, Session-, Passwort-Hashing- oder Datenbankintegration. Die
-Authentifizierung beim Server bleibt Autorität und muss nach der Integration separat getestet
-werden. Es finden keine Live-LLM-Aufrufe statt.
+- Der Klartextcode aus `outcome = created | rotated` ist nur ein flüchtiger Host-Anzeigezustand zum Lesen/Kopieren. Er erscheint nicht in Local-/Session-Storage, URLs oder Logs.
+- `outcome = replayed` wird als diskriminierte `SecretReplayResponse` behandelt: `invitation = null`, kein erfundener alter/neuer Code und keine nachträgliche Rekonstruktion.
+- Bei Lost Secret öffnet der Host zunächst seinen weiterhin autorisierten Raum. Nur die ausdrückliche Aktion „Neuen Code durch Rotation erzeugen“ startet eine neue Rotation mit neuer UUID und aktueller Room-Version. Der alte Code wird dabei ungültig.
+- Join-Retries verwenden weiterhin denselben normalisierten Code und dieselbe Request-ID. Dadurch bleibt der vertragliche Join-Receipt-Pfad nach einer zwischenzeitlichen Rotation nutzbar; Rich-Daten liefert nur ein neuer autorisierter Server-Snapshot.
+
+## Katalog und finale Abgabe
+
+Die Befragung bietet ausschließlich die serverseitig sichtbaren `availableQuestions` als verständliche Buttons. Kein Freitext, Provider oder API-Schlüssel ist für den Abschluss nötig. Pending-Karten zeigen höchstens die lokal gestellte Frage beziehungsweise Chatnachricht, aber niemals erfundene Antworten, Hinweise, Versionen oder Ergebnisse. Öffentliche und eigene private Hinweise/Dialoge kommen ausschließlich aus validierten Serverprojektionen; aus Versionslücken werden keine privaten Inhalte rekonstruiert.
+
+Die finale Abgabe sendet ausschließlich `suspectId`, `clientRequestId` und `expectedVersion`. Auswahl und Punkte werden clientseitig nicht bewertet. Ergebnis, Feedback, Punkte und `CaseResolution` erscheinen erst aus dem erfolgreichen REST-/Event-Snapshot des Servers. `abandoned` erzeugt keine Auflösung.
+
+## Bedienung und Zustände
+
+Responsive Layouts decken Desktop, Tablet und Mobile ab. Formulare, Radio-Felder, Fragelisten, Dialoge und Aktionen sind tastaturbedienbar und beschriftet. Skip-Link, sichtbarer Fokus, Status-/Alert-Regionen, große Touch-Ziele und Text-Reflow sind vorgesehen. Lade-, Leer-, Fehler-, Offline-, Reconnect- und Pending-Zustände sind getrennt sichtbar. Kritische Spielaktionen sind ohne bestätigte Live-Verbindung gesperrt; deaktivierte Controls sind jedoch keine Sicherheitsgrenze.
+
+## Tests und Integrationsgrenze
 
 ```bash
-# Vitest: Unit- und Component-Tests, kein Playwright
+# Unit-, Client-, Store- und Komponententests mit Contract-Fakes
 pnpm --filter @casetogether/frontend test
 
-# Einmalig beziehungsweise nach Browserpaket-Updates
-pnpm --filter @casetogether/frontend exec playwright install chromium
+# Gezielte neue Game-/Realtime-Suiten
+pnpm --filter @casetogether/frontend exec vitest run \
+  test/api/game-contracts.test.ts \
+  test/realtime/client-state.test.ts \
+  test/realtime/client.test.ts \
+  test/stores/game.test.ts \
+  test/components/GameView.test.ts \
+  test/components/RoomFlow.test.ts
 
-# Echte Browser-Smokes; baut zuerst Shared und startet Vite automatisch
+# Bestehende hermetische Browser-Smokes; baut Shared und startet Vite automatisch
 pnpm --filter @casetogether/frontend test:e2e
 ```
 
-Root-`pnpm test` bleibt der reine Vitest-/Unit-/Component-Lauf. Der eigene `test:e2e`-Schritt und
-die lokale Chromium-Installation sind im CI-Workflow getrennt hinterlegt; kein externer Service
-wird dafür verwendet.
+Die Vitest-Suite prüft unter anderem Create-/Rotate-Secret-Replays, Lost Secret, Join-Receipt nach Rotation, Leave-vor-Join, Reconnect/Lücken/stale Acks, Handshakefehler für WebSocket und Long-Poll, Event-/Ack-Deduplikation, Snapshot-Invarianten, Actor-private Projektionen und den vollständigen Katalogflow ohne Provider/UI-Freitext. Externe APIs und produktive Daten werden nicht verwendet.
 
-## Isolierter Playwright-Testserver
-
-Playwright verwendet ausschließlich den dedizierten Testport **5175** (`http://127.0.0.1:5175`).
-Dieselbe Konstante in `playwright.config.ts` steuert `baseURL`, das Vite-Kommando und
-`webServer.url`. Es wird **keine** Produkt- oder Deployment-Umgebungsvariable eingeführt.
-
-`reuseExistingServer` ist ausdrücklich und unabhängig von CI dauerhaft `false`. Playwright darf
-daher keinen bereits vorhandenen Server wiederverwenden – weder aus dem eigenen Worktree noch aus
-dem kanonischen Checkout beziehungsweise einem anderen Task oder einer anderen Anwendung. Vite
-startet mit `--strictPort`: Ist 5175 bereits belegt, bricht der Start mit einem verständlichen
-Portfehler ab; es gibt keinen Fallback auf einen fremden Server oder eine andere URL.
-
-Beim Testlauf startet Playwright ausschließlich den Vite-Prozess des T004-Worktrees auf 5175 und
-beendet die von ihm gestarteten Testprozesse nach dem Lauf wieder. Andere laufende Server – auch
-auf dem regulären Frontend-Port 5173 – werden weder verwendet, verändert noch beendet. Die Isolation gegenüber fremden Test- und Produktservern wird dadurch technisch verhindert, nicht
-nur durch eine Portkonvention gesichert.
+Die vorhandenen Playwright-Smokes starten keinen Backend-/MongoDB-Prozess und fangen Auth-REST per Route-Interception hermetisch ab. Sie prüfen weiterhin Login/Registrierung/Logout, geschützte Navigation, Desktop-/Tablet-/Mobile-Reflow und leeren Browser-Storage. **Ein echter Backend-/Socket-E2E über den kompletten Mehrspielerflow ist nicht Bestandteil dieses Arbeitspakets und bleibt T010 vorbehalten.** Für reale Entwicklung müssen Backend und Datenbank separat verfügbar sein; auch dann werden keine Live-LLM-Aufrufe benötigt oder vom Frontend ausgelöst.

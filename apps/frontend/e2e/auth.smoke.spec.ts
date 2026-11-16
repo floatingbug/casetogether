@@ -164,6 +164,25 @@ test('mobile viewport: registration reaches the protected responsive lobby', asy
   expect(await page.evaluate(() => localStorage.length + sessionStorage.length)).toBe(0);
 });
 
+test('tablet viewport: create and join controls remain usable after mocked registration', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await installContractMocks(page);
+  await page.goto('/register');
+
+  await page.getByLabel('Anzeigename', { exact: true }).fill('Ada Test');
+  await fillLogin(page);
+  await page.getByRole('button', { name: 'Konto erstellen', exact: true }).click();
+
+  await expect(page.getByRole('heading', { name: 'Privaten Raum erstellen' })).toBeVisible();
+  await expect(page.getByLabel('Einladungscode', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Raum beitreten', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Raum erstellen', exact: true })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  expect(await page.evaluate(() => localStorage.length + sessionStorage.length)).toBe(0);
+});
+
 test('NOT_FOUND during bootstrap clears protected content and redirects to login', async ({
   page,
 }) => {

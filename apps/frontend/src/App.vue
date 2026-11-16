@@ -2,11 +2,14 @@
 import { useRouter } from 'vue-router';
 import ConnectivityNotice from './components/ConnectivityNotice.vue';
 import { useAuthStore } from './stores/auth';
+import { useGameStore } from './stores/game';
 
 const auth = useAuthStore();
+const game = useGameStore();
 const router = useRouter();
 
 async function logout(): Promise<void> {
+  game.reset();
   await auth.logout();
   await router.replace({ name: 'login' });
 }

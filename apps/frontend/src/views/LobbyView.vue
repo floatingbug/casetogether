@@ -1,27 +1,48 @@
 <script setup lang="ts">
+import GameView from '../components/GameView.vue';
+import RoomEntry from '../components/RoomEntry.vue';
+import RoomLobby from '../components/RoomLobby.vue';
+import GameStatusMessages from '../components/GameStatusMessages.vue';
 import { useAuthStore } from '../stores/auth';
+import { useGameStore } from '../stores/game';
 
 const auth = useAuthStore();
+const game = useGameStore();
 </script>
 
 <template>
-  <div class="lobby-layout">
+  <div class="play-layout">
     <section class="lobby-hero" aria-labelledby="lobby-title">
-      <p class="eyebrow">Deine Lobby</p>
+      <p class="eyebrow">{{ game.game ? 'Gemeinsame Ermittlung' : 'Deine Lobby' }}</p>
       <h1 id="lobby-title">Willkommen, {{ auth.user?.displayName }}.</h1>
-      <p class="lead">Hier beginnt eure nächste gemeinsame Ermittlung.</p>
+      <p class="lead">
+        {{
+          game.game
+            ? 'Befragt Verdächtige, sammelt Hinweise und entscheidet gemeinsam.'
+            : 'Erstelle einen privaten Raum oder tritt deinem Ermittlerteam bei.'
+        }}
+      </p>
     </section>
 
-    <section class="empty-state" aria-labelledby="empty-lobby-title">
-      <span class="empty-state-mark" aria-hidden="true">CT</span>
-      <div>
-        <h2 id="empty-lobby-title">Noch kein Raum geöffnet</h2>
+    <GameView v-if="game.game" />
+    <template v-else-if="game.room">
+      <div v-if="game.room.room.status === 'in_progress'" class="panel loading-state" role="status">
+        <GameStatusMessages />
+        <h2>Die Game Session wird geladen</h2>
         <p>
-          Dein Konto ist bereit. Private Räume und Fallauswahl werden mit den nächsten
-          Arbeitspaketen hier verfügbar.
+          Der Raum ist gestartet. Die Oberfläche wartet auf deinen autoritativen Spiel-Snapshot.
         </p>
+        <button
+          class="secondary-button"
+          type="button"
+          :disabled="game.synchronizing"
+          @click="game.syncRoom"
+        >
+          Spielstand laden
+        </button>
       </div>
-      <p class="empty-state-note">Es liegen keine Raum- oder Spieldaten auf diesem Gerät.</p>
-    </section>
+      <RoomLobby v-else />
+    </template>
+    <RoomEntry v-else />
   </div>
 </template>
