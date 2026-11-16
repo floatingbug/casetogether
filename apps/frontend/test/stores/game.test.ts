@@ -170,6 +170,15 @@ async function startCatalogGame() {
   return store;
 }
 
+function rejectRequestIds() {
+  vi.stubGlobal('crypto', {
+    randomUUID: undefined,
+    getRandomValues: vi.fn(() => {
+      throw new TypeError('CSPRNG unavailable fixture');
+    }),
+  });
+}
+
 function replay(roomId = 'room_fixture') {
   return {
     outcome: 'replayed',
@@ -441,5 +450,103 @@ describe('reconnect, version repair and server-only game mutations', () => {
     expect(store.game).toBeNull();
     expect(JSON.stringify(store.$state)).not.toContain('Eigene Beobachtung');
     expect(JSON.stringify(store.$state)).not.toContain('different players private data');
+  });
+});
+
+describe('request ID failures before network actions', () => {
+  it('settles room creation without issuing a request or leaving the loading state active', async () => {
+    const store = useGameStore();
+    rejectRequestIds();
+
+    await expect(store.createRoom()).resolves.toBe(false);
+
+    expect(store.creating).toBe(false);
+    expect(store.errorMessage).not.toBe('');
+    expect(mocks.createRoom).not.toHaveBeenCalled();
+  });
+
+  it('settles joining without issuing a request or leaving the loading state active', async () => {
+    const store = useGameStore();
+    rejectRequestIds();
+
+    await expect(store.joinRoom(invitationCode)).resolves.toBe(false);
+
+    expect(store.joining).toBe(false);
+    expect(store.errorMessage).not.toBe('');
+    expect(mocks.joinRoomRest).not.toHaveBeenCalled();
+  });
+
+  it('settles invitation rotation without an active loading state', async () => {
+    const store = await joinLobby();
+    mocks.rotateInvitation.mockClear();
+    rejectRequestIds();
+
+    await expect(store.rotateInvitation()).resolves.toBe(false);
+
+    expect(store.rotating).toBe(false);
+    expect(store.errorMessage).not.toBe('');
+    expect(mocks.rotateInvitation).not.toHaveBeenCalled();
+  });
+
+  it('settles game start without an active loading state', async () => {
+    const store = await joinLobby();
+    mocks.startGameRest.mockClear();
+    rejectRequestIds();
+
+    await expect(store.startGame(CaseIdSchema.parse('case_fixture'))).resolves.toBe(false);
+
+    expect(store.starting).toBe(false);
+    expect(store.errorMessage).not.toBe('');
+    expect(mocks.startGameRest).not.toHaveBeenCalled();
+  });
+
+  it('settles chat sending without a pending request or active loading state', async () => {
+    const store = await joinLobby();
+    rejectRequestIds();
+
+    await expect(store.sendChat('Hallo Team')).resolves.toBe(false);
+
+    expect(store.sendingChat).toBe(false);
+    expect(store.pendingChat).toBeNull();
+    expect(store.errorMessage).not.toBe('');
+    expect(mocks.sendChat).not.toHaveBeenCalled();
+  });
+
+  it('settles catalog questions without a pending request or active loading state', async () => {
+    const store = await startCatalogGame();
+    const question = store.game?.availableQuestions[0];
+    if (question === undefined) throw new Error('Expected catalog fixture');
+    rejectRequestIds();
+
+    await expect(store.askCatalog(question)).resolves.toBe(false);
+
+    expect(store.askingQuestion).toBe(false);
+    expect(store.pendingQuestion).toBeNull();
+    expect(store.errorMessage).not.toBe('');
+    expect(mocks.askCatalog).not.toHaveBeenCalled();
+  });
+
+  it('settles final submission without a pending request or active loading state', async () => {
+    const store = await startCatalogGame();
+    rejectRequestIds();
+
+    await expect(store.submitFinal(SuspectIdSchema.parse('suspect_ada'))).resolves.toBe(false);
+
+    expect(store.submittingFinal).toBe(false);
+    expect(store.pendingFinal).toBeNull();
+    expect(store.errorMessage).not.toBe('');
+    expect(mocks.submitFinal).not.toHaveBeenCalled();
+  });
+
+  it('settles leaving without a pending request or active loading state', async () => {
+    const store = await joinLobby();
+    rejectRequestIds();
+
+    await expect(store.leaveRoom()).resolves.toBe(false);
+
+    expect(store.leaving).toBe(false);
+    expect(store.pendingLeave).toBeNull();
+    expect(store.errorMessage).not.toBe('');
+    expect(mocks.leaveRoom).not.toHaveBeenCalled();
   });
 });

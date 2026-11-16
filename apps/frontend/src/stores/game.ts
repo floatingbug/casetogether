@@ -270,8 +270,8 @@ export const useGameStore = defineStore('game', () => {
     errorMessage.value = '';
     noticeMessage.value = '';
     const epoch = roomEpoch;
-    createAttempt ??= { clientRequestId: newClientRequestId() };
     try {
+      createAttempt ??= { clientRequestId: newClientRequestId() };
       const response = await roomsApi.createRoom(createAttempt);
       if (epoch !== roomEpoch) return false;
       createAttempt = null;
@@ -315,13 +315,13 @@ export const useGameStore = defineStore('game', () => {
       errorMessage.value = 'Bitte gib den Code im Format XXXX-XXXX-XXXX ein.';
       return false;
     }
-    if (joinAttempt?.code !== parsedCode.data) {
-      joinAttempt = { code: parsedCode.data, clientRequestId: newClientRequestId() };
-    }
     joining.value = true;
     errorMessage.value = '';
     const epoch = roomEpoch;
     try {
+      if (joinAttempt?.code !== parsedCode.data) {
+        joinAttempt = { code: parsedCode.data, clientRequestId: newClientRequestId() };
+      }
       const snapshot = await roomsApi.joinRoom(joinAttempt);
       const activeSessionId = snapshot.room.activeSessionId;
       const gameSnapshot =
@@ -459,17 +459,16 @@ export const useGameStore = defineStore('game', () => {
   async function rotateInvitation(): Promise<boolean> {
     const currentRoom = room.value?.room;
     if (rotating.value || currentRoom === undefined) return false;
-    rotationAttempt ??= {
-      roomId: currentRoom.id,
-      expectedVersion: currentRoom.version,
-      clientRequestId: newClientRequestId(),
-    };
-    const attempt = rotationAttempt;
     const epoch = roomEpoch;
     rotating.value = true;
     errorMessage.value = '';
     try {
-      const response = await roomsApi.rotateInvitation(attempt);
+      rotationAttempt ??= {
+        roomId: currentRoom.id,
+        expectedVersion: currentRoom.version,
+        clientRequestId: newClientRequestId(),
+      };
+      const response = await roomsApi.rotateInvitation(rotationAttempt);
       if (epoch !== roomEpoch) return false;
       rotationAttempt = null;
       if (response.outcome === 'replayed') {
@@ -503,24 +502,23 @@ export const useGameStore = defineStore('game', () => {
   async function startGame(caseId: CaseId): Promise<boolean> {
     const currentRoom = room.value?.room;
     if (starting.value || currentRoom === undefined) return false;
-    startAttempt ??= {
-      roomId: currentRoom.id,
-      caseId,
-      expectedVersion: currentRoom.version,
-      clientRequestId: newClientRequestId(),
-    };
-    const attempt = startAttempt;
     const epoch = roomEpoch;
     starting.value = true;
     errorMessage.value = '';
     noticeMessage.value = '';
     try {
+      startAttempt ??= {
+        roomId: currentRoom.id,
+        caseId,
+        expectedVersion: currentRoom.version,
+        clientRequestId: newClientRequestId(),
+      };
       if (startAttempt.caseId !== caseId) {
         errorMessage.value =
           'Bitte bestätige zuerst den Ausgang der bereits gesendeten Startanfrage.';
         return false;
       }
-      await roomsApi.startGame(attempt);
+      await roomsApi.startGame(startAttempt);
       if (epoch !== roomEpoch) return false;
       startAttempt = null;
       noticeMessage.value = 'Der Start wurde bestätigt. Der vollständige Spielstand wird geladen …';
@@ -543,17 +541,22 @@ export const useGameStore = defineStore('game', () => {
   async function sendChat(content: string): Promise<boolean> {
     const currentRoom = room.value?.room;
     if (sendingChat.value || currentRoom === undefined) return false;
-    const parsed = ChatSendRequestSchema.safeParse({
-      roomId: currentRoom.id,
-      clientRequestId: newClientRequestId(),
-      content,
-    });
-    if (!parsed.success) {
-      errorMessage.value = 'Bitte gib eine Nachricht mit 1–1000 Zeichen ein.';
+    try {
+      const parsed = ChatSendRequestSchema.safeParse({
+        roomId: currentRoom.id,
+        clientRequestId: newClientRequestId(),
+        content,
+      });
+      if (!parsed.success) {
+        errorMessage.value = 'Bitte gib eine Nachricht mit 1–1000 Zeichen ein.';
+        return false;
+      }
+      pendingChat.value = parsed.data;
+      return await performChat(parsed.data);
+    } catch (error: unknown) {
+      setError(error);
       return false;
     }
-    pendingChat.value = parsed.data;
-    return performChat(parsed.data);
   }
 
   async function retryChat(): Promise<boolean> {
@@ -583,20 +586,25 @@ export const useGameStore = defineStore('game', () => {
 
   async function askCatalog(question: CatalogQuestion): Promise<boolean> {
     if (askingQuestion.value || pendingQuestion.value !== null || game.value === null) return false;
-    const parsed = CatalogQuestionRequestSchema.safeParse({
-      sessionId: game.value.sessionId,
-      clientRequestId: newClientRequestId(),
-      expectedVersion: game.value.version,
-      suspectId: question.suspectId,
-      mode: 'catalog',
-      questionId: question.questionId,
-    });
-    if (!parsed.success) {
-      errorMessage.value = 'Diese Katalogfrage konnte nicht gesendet werden.';
+    try {
+      const parsed = CatalogQuestionRequestSchema.safeParse({
+        sessionId: game.value.sessionId,
+        clientRequestId: newClientRequestId(),
+        expectedVersion: game.value.version,
+        suspectId: question.suspectId,
+        mode: 'catalog',
+        questionId: question.questionId,
+      });
+      if (!parsed.success) {
+        errorMessage.value = 'Diese Katalogfrage konnte nicht gesendet werden.';
+        return false;
+      }
+      pendingQuestion.value = { request: parsed.data, questionText: question.text };
+      return await performCatalogQuestion(parsed.data);
+    } catch (error: unknown) {
+      setError(error);
       return false;
     }
-    pendingQuestion.value = { request: parsed.data, questionText: question.text };
-    return performCatalogQuestion(parsed.data);
   }
 
   async function retryCatalogQuestion(): Promise<boolean> {
@@ -637,22 +645,22 @@ export const useGameStore = defineStore('game', () => {
 
   async function submitFinal(suspectId: SuspectId): Promise<boolean> {
     if (submittingFinal.value || game.value === null) return false;
-    pendingFinal.value ??= {
-      sessionId: game.value.sessionId,
-      suspectId,
-      expectedVersion: game.value.version,
-      clientRequestId: newClientRequestId(),
-    };
-    const attempt = pendingFinal.value;
-    if (attempt.suspectId !== suspectId) {
-      errorMessage.value =
-        'Bitte bestätige zuerst den Ausgang der bereits gesendeten finalen Abgabe.';
-      return false;
-    }
     const epoch = roomEpoch;
     submittingFinal.value = true;
     errorMessage.value = '';
     try {
+      pendingFinal.value ??= {
+        sessionId: game.value.sessionId,
+        suspectId,
+        expectedVersion: game.value.version,
+        clientRequestId: newClientRequestId(),
+      };
+      const attempt = pendingFinal.value;
+      if (attempt.suspectId !== suspectId) {
+        errorMessage.value =
+          'Bitte bestätige zuerst den Ausgang der bereits gesendeten finalen Abgabe.';
+        return false;
+      }
       const snapshot = await gameSessionsApi.submitFinalSolution(attempt);
       if (epoch !== roomEpoch) return false;
       const result = applyResult(machine.applyGameSnapshot(snapshot));
@@ -678,20 +686,20 @@ export const useGameStore = defineStore('game', () => {
     if (leaveTask !== null) return leaveTask;
     const currentRoom = room.value?.room;
     if (pendingLeave.value === null && currentRoom === undefined) return false;
-    if (pendingLeave.value === null) {
-      if (currentRoom === undefined) return false;
-      pendingLeave.value = {
-        roomId: currentRoom.id,
-        expectedVersion: currentRoom.version,
-        clientRequestId: newClientRequestId(),
-      };
-    }
-    const attempt = pendingLeave.value;
     const epoch = roomEpoch;
     const task = (async () => {
       leaving.value = true;
       errorMessage.value = '';
       try {
+        if (pendingLeave.value === null) {
+          if (currentRoom === undefined) return false;
+          pendingLeave.value = {
+            roomId: currentRoom.id,
+            expectedVersion: currentRoom.version,
+            clientRequestId: newClientRequestId(),
+          };
+        }
+        const attempt = pendingLeave.value;
         if (!realtimeClient.connected) await ensureRealtimeConnection();
         if (!realtimeClient.connected) return false;
         await realtimeClient.leaveRoom(attempt);

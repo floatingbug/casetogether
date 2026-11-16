@@ -12,6 +12,8 @@ pnpm --filter @casetogether/frontend dev
 
 Vite leitet `/api` und `/socket.io` an `http://127.0.0.1:3000` weiter. Socket.IO verwendet den Standardpfad `/socket.io`, `withCredentials: true` und keine Auth-Tokens in Query oder Handshake-Body. Der Backend-Prozess muss die tatsächliche Frontend-Origin gemäß `docs/DEVELOPMENT.md` erlauben. Proxy und Origin sind kein Autorisierungsbeweis; Cookie, CSRF-/Origin-Prüfung, Mitgliedschaft, Hostrolle, Versionen und Spielregeln bleiben Serversache.
 
+Bei lokalen HTTP-LAN-Origins kann `crypto.randomUUID()` im Browser fehlen. Request-IDs verwenden diese Funktion bevorzugt und erzeugen sonst aus 16 Bytes von `crypto.getRandomValues()` eine RFC-konforme UUID v4. Das ist ausschließlich Kompatibilität für lokale Entwicklung; produktive HTTPS- und Cookie-Anforderungen bleiben unverändert.
+
 ## Struktur und Datenautorität
 
 - `src/api/http.ts` kapselt Fetch mit JSON, `credentials: 'include'` und strikten Shared-Fehler- und Erfolgshüllen.
