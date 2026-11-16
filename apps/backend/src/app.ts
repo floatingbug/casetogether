@@ -24,10 +24,12 @@ import {
 } from './config.js';
 import type { MongoDbStatus } from './database/mongodb.js';
 import { limitAuthRequestsByIp } from './http/auth-rate-limit.js';
+import { readAuthCookie } from './http/auth-cookies.js';
 import { createIdentityRoutes } from './http/identity-routes.js';
 import { createRoomRoutes } from './http/rooms/room-routes.js';
 import type { IdentityService } from './modules/identity/identity-service.js';
 import type { RoomService } from './modules/rooms/room-service.js';
+import type { RealtimeGateway } from './realtime/gateway.js';
 
 export const JSON_PAYLOAD_LIMIT = '16kb';
 export type { MongoDbStatus } from './database/mongodb.js';
@@ -38,6 +40,7 @@ export interface AppOptions {
   mongoDbStatus?: () => Promise<MongoDbStatus>;
   identityService?: IdentityService;
   roomService?: RoomService;
+  realtimeGateway?: Pick<RealtimeGateway, 'publishRoomPublication' | 'disconnectSession'>;
   logInternalError?: (requestId: string) => void;
 }
 
@@ -231,11 +234,31 @@ export function createApp(options: AppOptions = {}): Express {
 
   if (options.identityService !== undefined) {
     const cookieConfiguration = readBackendConfig({ NODE_ENV: nodeEnv }).authCookie;
+    if (options.realtimeGateway !== undefined) {
+      const realtimeGateway = options.realtimeGateway;
+      app.use('/api/v1/auth/logout', (request, response, next) => {
+        if (request.method === 'POST') {
+          const cookieValue = readAuthCookie(request.headers.cookie, cookieConfiguration);
+          response.once('finish', () => realtimeGateway.disconnectSession(cookieValue));
+        }
+        next();
+      });
+    }
     app.use('/api/v1', createIdentityRoutes(options.identityService, cookieConfiguration));
     if (options.roomService !== undefined) {
+      const publishRoomPublication =
+        options.realtimeGateway === undefined
+          ? undefined
+          : (publication: unknown) =>
+              options.realtimeGateway?.publishRoomPublication(publication) ?? Promise.resolve();
       app.use(
         '/api/v1',
-        createRoomRoutes(options.identityService, options.roomService, cookieConfiguration),
+        createRoomRoutes(
+          options.identityService,
+          options.roomService,
+          cookieConfiguration,
+          publishRoomPublication,
+        ),
       );
     }
   } else if (options.roomService !== undefined) {

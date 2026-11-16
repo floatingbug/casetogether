@@ -6,6 +6,7 @@ import {
   type IdentityService,
 } from './modules/identity/identity-service.js';
 import { createRoomService, type RoomService } from './modules/rooms/room-service.js';
+import { createRealtimeGateway, type RealtimeGateway } from './realtime/gateway.js';
 
 async function start(): Promise<void> {
   const config = readBackendRuntimeConfig();
@@ -14,12 +15,20 @@ async function start(): Promise<void> {
 
   let identityService: IdentityService;
   let roomService: RoomService;
+  let realtimeGateway: RealtimeGateway;
   try {
     identityService = await createIdentityService({
       database: mongoDatabase.database,
       sessionSecret: config.sessionSecret,
     });
     roomService = await createRoomService({ database: mongoDatabase.database });
+    realtimeGateway = await createRealtimeGateway({
+      database: mongoDatabase.database,
+      identityService,
+      roomService,
+      cookieConfiguration: config.authCookie,
+      allowedOrigins: config.allowedOrigins,
+    });
   } catch (error) {
     await mongoDatabase.close();
     throw error;
@@ -31,10 +40,12 @@ async function start(): Promise<void> {
     mongoDbStatus: () => mongoDatabase.ping(),
     identityService,
     roomService,
+    realtimeGateway,
   });
   const server = app.listen(config.port, '127.0.0.1', () => {
     console.log(JSON.stringify({ event: 'backend_listening', port: config.port }));
   });
+  realtimeGateway.attach(server);
   let shuttingDown = false;
 
   const shutdown = async (): Promise<void> => {
@@ -42,6 +53,7 @@ async function start(): Promise<void> {
       return;
     }
     shuttingDown = true;
+    realtimeGateway.close();
 
     try {
       await new Promise<void>((resolve, reject) => {

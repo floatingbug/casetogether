@@ -18,6 +18,7 @@ export function createRoomRoutes(
   identityService: IdentityService,
   roomService: RoomService,
   cookieConfiguration: AuthCookieConfig,
+  publishRoomPublication?: (publication: unknown) => Promise<void>,
 ): Router {
   const router = Router();
   const authenticated = requireAuthentication(identityService, cookieConfiguration);
@@ -41,6 +42,7 @@ export function createRoomRoutes(
     }
     roomService.consumeJoinIpRateLimit(request.ip ?? 'unknown');
     const result = await roomService.joinRoom(getAuthenticatedUser(request), parsed.data);
+    await publishRoomPublication?.(result.publication);
     response.status(200).json(RoomResponseSchema.parse({ data: result.data }));
   });
 
@@ -68,6 +70,7 @@ export function createRoomRoutes(
       roomId.data,
       parsed.data,
     );
+    await publishRoomPublication?.(result.publication);
     response.status(200).json(RotateInvitationResponseEnvelopeSchema.parse({ data: result.data }));
   });
 
