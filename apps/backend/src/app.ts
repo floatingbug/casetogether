@@ -25,7 +25,9 @@ import {
 import type { MongoDbStatus } from './database/mongodb.js';
 import { limitAuthRequestsByIp } from './http/auth-rate-limit.js';
 import { createIdentityRoutes } from './http/identity-routes.js';
+import { createRoomRoutes } from './http/rooms/room-routes.js';
 import type { IdentityService } from './modules/identity/identity-service.js';
+import type { RoomService } from './modules/rooms/room-service.js';
 
 export const JSON_PAYLOAD_LIMIT = '16kb';
 export type { MongoDbStatus } from './database/mongodb.js';
@@ -35,6 +37,7 @@ export interface AppOptions {
   nodeEnv?: NodeEnvironment;
   mongoDbStatus?: () => Promise<MongoDbStatus>;
   identityService?: IdentityService;
+  roomService?: RoomService;
   logInternalError?: (requestId: string) => void;
 }
 
@@ -229,6 +232,14 @@ export function createApp(options: AppOptions = {}): Express {
   if (options.identityService !== undefined) {
     const cookieConfiguration = readBackendConfig({ NODE_ENV: nodeEnv }).authCookie;
     app.use('/api/v1', createIdentityRoutes(options.identityService, cookieConfiguration));
+    if (options.roomService !== undefined) {
+      app.use(
+        '/api/v1',
+        createRoomRoutes(options.identityService, options.roomService, cookieConfiguration),
+      );
+    }
+  } else if (options.roomService !== undefined) {
+    throw new Error('Room routes require the identity service');
   }
 
   app.use((_request, response) => {

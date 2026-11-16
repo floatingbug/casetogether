@@ -1,11 +1,11 @@
-# Backend – Identity und MongoDB (T003)
+# Backend – Identity, Spielräume und MongoDB (T003/T005)
 
 ## Erforderliche Runtime-Konfiguration
 
 Der produktive Entry Point `src/main.ts` verbindet sich vor dem HTTP-Listen mit MongoDB und legt
-idempotent ausschließlich die Auth-Indizes auf `users` und `authSessions` an. Ein Start mit nicht
-erreichbarer Datenbank oder ungültiger zwingender Konfiguration schlägt kontrolliert fehl; dabei
-werden weder URI noch Secret oder Treiberdetails geloggt.
+idempotent die erforderlichen Auth-Indizes auf `users`/`authSessions` sowie Raum-Indizes auf `rooms`
+an. Ein Start mit nicht erreichbarer Datenbank oder ungültiger zwingender Konfiguration schlägt
+kontrolliert fehl; dabei werden weder URI noch Secret oder Treiberdetails geloggt.
 
 Erforderlich sind:
 
@@ -87,6 +87,53 @@ IP-/Konto-Schlüssel liegen nur als zweckgebundene HMAC-Hashes in kurzlebigen Pr
 Uhr und Fenster sind in Tests injizierbar; E-Mail-Klartext wird nicht in Routine-Logs geschrieben.
 Diese Limits gelten bewusst für die dokumentierte einzelne Backend-Instanz.
 
+## Private Spielräume unter `/api/v1`
+
+| Operation                                | Verhalten                                                                                                                                                                                                                                      |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /rooms`                            | Authentifizierter Host, initial `201 outcome=created` mit Room-Snapshot und neuem Code. Persistente Replays liefern `200 outcome=replayed`, `invitation=null` und keine reiche Room-Projektion.                                                |
+| `POST /rooms/join`                       | Code-Join ohne `expectedVersion`; maximal vier Mitglieder. Bestehende Mitgliedschaft erzeugt einen atomaren No-op-Receipt ohne Versionsänderung.                                                                                               |
+| `GET /rooms/{roomId}`                    | Nur aktuelle Mitglieder erhalten einen schema-validierten Snapshot mit `PublicUser`-Daten, `recentMessages=[]` und flüchtigem, in T005 leerem `presence`. Fremde erhalten `NOT_FOUND`, geschlossene/abgelaufene bekannte Lobbys `ROOM_CLOSED`. |
+| `POST /rooms/{roomId}/invitation/rotate` | Nur Host in `waiting`/`ready` mit erwarteter Room-Version. Initial neuer Code und `outcome=rotated`; persistente Replays sind ausschließlich codefreie Secret-Marker.                                                                          |
+
+`leaveRoom` ist zusätzlich als Repository-/Use-Case-Grenze für T006 implementiert, aus Sicherheits- und
+Vertragsgründen aber **nicht** als REST-Endpunkt oder Socket.IO-Handler verdrahtet. Gewöhnliche Mitglieder
+werden mit Room-CAS entfernt; ein Host schließt die Lobby. Beide Fälle speichern nur das minimal
+replayfähige Ergebnis `{ roomId, roomVersion, closed }`. Nach erfolgreichem Verlassen kann derselbe Request
+dieses Ack ohne Mitgliedschaft erneut liefern, niemals jedoch alte Mitglieder-/Raumdaten.
+
+### Einladungen, Persistenz und Projektion
+
+- Der Standardgenerator liest zwölf `randomBytes` und wählt mit den jeweils fünf niederwertigen Bits
+  gleichverteilt aus den 32 Zeichen `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (60 Bit). Transport und Ausgabe
+  gruppieren `XXXX-XXXX-XXXX`; für den SHA-256-Hash werden Bindestriche entfernt und Großbuchstaben
+  kanonisiert.
+- `rooms.invitation` enthält ausschließlich `codeHash`, `createdAt`, `expiresAt`. Klartextcode oder
+  vollständige Secret-Responses befinden sich weder in `actionReceipts` noch in Snapshots, Events oder
+  Routine-Logs. Initialer Code und Ablauf werden nur an den Host zurückgegeben.
+- Receipts binden `(actorUserId, operation, aggregateId, clientRequestId)` über einen gehashten
+  `lookupKey` und prüfen den SHA-256-Payload-Hash. Sie enthalten nur `roomId`, Room-Version,
+  Event-ID/Close-Marker und technische Schlüsseldaten. Create nutzt `aggregateId=new`.
+- `ensureRoomIndexes` erstellt unique `invitation.codeHash` und `actionReceipts.lookupKey`, den
+  Receipt-Actor-/Operation-/Request-Index, den Membership-Index sowie TTL `deleteAfter`. Einladungen
+  laufen 60 Minuten; Lobbys 24 Stunden nach Erstellung. Der fachliche Ablauf wird unabhängig vom
+  asynchronen TTL-Monitor geprüft.
+- Der New-Join verwendet ein einzelnes atomares `findOneAndUpdate` mit Code-/Ablauf-, Status-,
+  Nichtmitgliedschafts-, Receipt- und `$expr $size(members) < 4`-Prädikat. Mitglied, Receipt, `ready`,
+  Update-Zeit und Version werden in demselben Update gesetzt. Der No-op-Join verlangt ebenfalls atomar
+  fortbestehende Mitgliedschaft und schreibt nur seinen Receipt, keine Version oder Broadcast-Wirkung.
+- Join-Replay-Suche ist actor-gebunden und unabhängig vom später rotierten Code-Hash. Erst Payload-Hash,
+  dann fortbestehende Mitgliedschaft und lesbarer Lobbyzustand entscheiden über einen aktuellen Snapshot;
+  ehemalige Mitglieder erhalten `NOT_FOUND`.
+- Rotate und Leave sind `expectedVersion`-CAS-Mutationen. Fehlgeschlagene CAS-Schritte erzeugen keinen
+  Erfolgs-Receipt/Versionssprung. Replays dürfen keine Version oder Publication erneut erzeugen.
+- Ergebnisobjekte enthalten optional `RoomPublication` mit aktuellen Empfänger-IDs und einem gegen das
+  Shared-Schema validierten Room-Event. Join-, Rotate-, Leave-/Close-Erstmaterial besitzt keinen Code,
+  Code-Hash oder Receipt. Replays und No-op-Joins besitzen `publication=null`; T006 versendet erst nach
+  diesem persistierten Ergebnis.
+- Join-Limits sind 10/5 min/Nutzer und 50/h/IP in der dokumentierten einzelnen Backend-Instanz. Join
+  und Counter verwenden dieselbe injizierbare Uhr.
+
 ## Tests und Datenbank
 
 ```bash
@@ -96,13 +143,17 @@ pnpm --filter @casetogether/backend test
 Unit-, Supertest-Integrationen und ein HTTP-`fetch`-Smoke verwenden für DB-Pfade ein echtes
 temporäres `mongod 7.0.24`, kein In-Memory-Repository. Versionen, Binary-/Cachepfade,
 Start-/Stop-Sequenz, Testumfang und die Vorgehensweise bei nicht verfügbarem Binary sind in
-[`docs/DATABASE_TESTING.md`](../../docs/DATABASE_TESTING.md) dokumentiert. Tests benötigen keine
-produktive MongoDB, externe Cluster, echten Secrets oder Live-LLMs.
+[`docs/DATABASE_TESTING.md`](../../docs/DATABASE_TESTING.md) dokumentiert. T005-konkrete Races,
+Neustarts, Cleanup und der zusätzliche Built-Rooms-Smoke stehen in
+[`docs/ROOMS_TESTING.md`](../../docs/ROOMS_TESTING.md). Tests benötigen keine produktive MongoDB,
+externe Cluster, echten Secrets oder Live-LLMs.
 
 ## Bewusste Taskgrenzen
 
-Keine Räume, Spiel-/Fallcollections, Socket.IO-Verbindungen oder Spielregeln sind Teil dieses Task.
-Durch REST-Logout revozierte Sessions sind sofort für weitere Auth-Prüfungen ungültig; aktives
-Trennen zugehöriger Sockets und Socket-Handshake-Authentifizierung gehören zu T006. Gemeinsame Rate-
-Limit-Verwaltung für mehrere Backend-Instanzen ist kein MVP-Verteilungsschritt und bleibt einer
-späteren Betriebsentscheidung vorbehalten.
+Socket.IO-Verbindungen, persistierter Chat, Spielstart, Game-Sessions und Spielregeln sind nicht Teil
+von T005. `presence` bleibt flüchtig und wird nicht mit Room-Versionen persistiert. Durch REST-Logout
+revozierte Sessions sind sofort für weitere Auth-Prüfungen ungültig; aktives Trennen zugehöriger Sockets
+und Socket-Handshake-Authentifizierung gehören zu T006. T009 integriert den Spielstart separat; T005
+erzeugt weder Start-Intents noch Engine-/Session-State. Gemeinsame Rate-Limit-Verwaltung für mehrere
+Backend-Instanzen ist kein MVP-Verteilungsschritt und bleibt einer späteren Betriebsentscheidung
+vorbehalten.

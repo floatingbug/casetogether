@@ -5,6 +5,7 @@ import {
   createIdentityService,
   type IdentityService,
 } from './modules/identity/identity-service.js';
+import { createRoomService, type RoomService } from './modules/rooms/room-service.js';
 
 async function start(): Promise<void> {
   const config = readBackendRuntimeConfig();
@@ -12,11 +13,13 @@ async function start(): Promise<void> {
   await mongoDatabase.connect();
 
   let identityService: IdentityService;
+  let roomService: RoomService;
   try {
     identityService = await createIdentityService({
       database: mongoDatabase.database,
       sessionSecret: config.sessionSecret,
     });
+    roomService = await createRoomService({ database: mongoDatabase.database });
   } catch (error) {
     await mongoDatabase.close();
     throw error;
@@ -27,6 +30,7 @@ async function start(): Promise<void> {
     nodeEnv: config.nodeEnv,
     mongoDbStatus: () => mongoDatabase.ping(),
     identityService,
+    roomService,
   });
   const server = app.listen(config.port, '127.0.0.1', () => {
     console.log(JSON.stringify({ event: 'backend_listening', port: config.port }));
