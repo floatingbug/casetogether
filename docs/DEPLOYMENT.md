@@ -130,6 +130,48 @@ ssh casetogether-vps 'su - tom -c "pm2 logs casetogether-api --lines 100"'
 Ein Rollback deployt denselben Ablauf aus einem früheren Commit. Es gibt bewusst keine
 automatische Artefakthistorie auf dem Server.
 
+## SSH-Zugang
+
+Der Server akzeptiert nur noch Key-Authentifizierung:
+
+- `PasswordAuthentication no`, `KbdInteractiveAuthentication no`,
+  `PermitRootLogin prohibit-password`, `PubkeyAuthentication yes`
+  (`/etc/ssh/sshd_config.d/99-casetogether-hardening.conf`).
+- Der administrative Key liegt nur auf der Admin-Maschine, niemals im Repository.
+- Das Root-Passwort wurde rotiert und ist ausschließlich root-lesbar auf dem Server
+  hinterlegt; der Wert gehört in einen Passwortmanager. Passwort-Login ist deaktiviert.
+- Notfallzugang: IONOS-Konsole. Vor jeder SSH-Konfigurationsänderung wird ein Backup der
+  `sshd_config` unter `/root/` angelegt und `sshd -t` geprüft.
+
+## Backup, Restore und Healthcheck
+
+- Täglich um 03:15 Uhr erstellt `/usr/local/bin/casetogether-backup.sh` per `mongodump` ein
+  gzip-Archiv unter `/var/backups/casetogether` (Eigentümer `root`, Modus `600`, Aufbewahrung
+  sieben Tage). Mitgesichert wird `ecosystem.config.cjs`, weil darin `SESSION_SECRET` liegt.
+  Steuerung: `/etc/cron.d/casetogether-backup`.
+- Manuelles Backup und Restore:
+
+  ```bash
+  ssh casetogether-vps /usr/local/bin/casetogether-backup.sh
+  ssh casetogether-vps 'ls -lh /var/backups/casetogether'
+
+  # Restore zunächst immer in eine Wegwerf-Datenbank prüfen:
+  ssh casetogether-vps 'mongorestore --uri="mongodb://127.0.0.1:27017" \
+    --archive=/var/backups/casetogether/<datei>.archive --gzip \
+    --nsFrom="casetogether.*" --nsTo="casetogether_restore_test.*"'
+  ```
+
+  Der Restore in die produktive Datenbank erfolgt erst nach Prüfung mit `--drop` und
+  anschließendem Neustart von `casetogether-api`.
+
+- `/usr/local/bin/casetogether-healthcheck.sh` prüft alle fünf Minuten
+  `https://api.casetogether.tasse-voll-code.de/api/v1/ready` und protokolliert nur
+  Auffälligkeiten (Status ungleich 200, weniger als 80 MiB verfügbarer RAM, mehr als 85 %
+  Diskbelegung) in `/var/log/casetogether-health.log`; die Datei wird ab 512 KiB gekürzt.
+  Steuerung: `/etc/cron.d/casetogether-healthcheck`.
+- Es gibt noch **kein externes Alerting**. Für echten Betrieb sollte ein Uptime-Monitor
+  `/api/v1/ready` überwachen und bei Fehlschlag benachrichtigen.
+
 ## Automatische Deployments und Rollback
 
 - Push auf einen Branch oder Öffnen/Aktualisieren eines Pull Requests erzeugt ein
@@ -182,7 +224,7 @@ der absolute API-Origin zu setzen, weil der Vercel-Origin kein Backend ausliefer
   Chatnachricht über `wss://api.casetogether.tasse-voll-code.de/socket.io` zugestellt.
 - Testkonten und Testraum wurden nach der Verifikation entfernt; die Datenbank enthält nur den
   beim Start provisionierten Fall.
-- Offen: Backup/Restore, Monitoring und die restlichen T011-Akzeptanzkriterien.
+- Offen: externes Alerting und die restlichen T011-Akzeptanzkriterien (u. a. Staging, Aufbewahrungsnachweise).
 
 ## Bekannte Einschränkungen
 
