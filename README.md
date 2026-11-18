@@ -5,6 +5,7 @@ Vendor-neutrale Agenten-Konfiguration für die Entwicklung eines KI-gestützten 
 ## Ziel
 
 Ein spielbarer MVP für 2–4 Freunde:
+
 - Ein Host erstellt einen privaten Spielraum.
 - Weitere Spieler treten per Einladungscode bei.
 - Die Gruppe startet einen vordefinierten Kriminalfall.
@@ -49,7 +50,7 @@ Die Laufzeitregeln, Agentenabbildung und Worktree-Isolierung sind in `orchestrat
 - Tests: Vitest, Supertest, Playwright
 - KI: optionaler, austauschbarer LLM-Provider-Adapter; initial OpenAI API; ohne Konfiguration wird kein Provider aufgerufen
 - Monorepo: pnpm workspaces
-- Deployment: zunächst ein Frontend-Host und ein Backend-Host; konkrete Anbieter nach Verfügbarkeit/Region auswählen
+- Deployment: Frontend auf Vercel mit automatischem Deploy bei Push auf `main`; Backend auf einem VPS mit nginx und PM2; Details in `docs/DEPLOYMENT.md`
 
 ## Wichtige Leitentscheidung
 
