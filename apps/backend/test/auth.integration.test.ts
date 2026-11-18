@@ -298,7 +298,7 @@ describe('cookie authentication, revocation and expiry', () => {
     });
   });
 
-  it('uses Secure for both issued and cleared cookies in production', async () => {
+  it('uses Secure cross-site cookies for both issued and cleared cookies in production', async () => {
     const { app } = await createAuthTestApp({ database: mongo.database, nodeEnv: 'production' });
     const registration = await unsafePost(app, '/api/v1/auth/register')
       .send(registrationPayload('secure@example.com'))
@@ -309,7 +309,9 @@ describe('cookie authentication, revocation and expiry', () => {
 
     expect(parseSetCookie(setCookieHeader(registration)).secure).toBe(true);
     expect(parseSetCookie(setCookieHeader(logout)).secure).toBe(true);
-    expect(readBackendConfig({ NODE_ENV: 'production' }).authCookie.sameSite).toBe('lax');
+    expect(parseSetCookie(setCookieHeader(registration)).sameSite).toBe('none');
+    expect(parseSetCookie(setCookieHeader(logout)).sameSite).toBe('none');
+    expect(readBackendConfig({ NODE_ENV: 'production' }).authCookie.sameSite).toBe('none');
   });
 });
 

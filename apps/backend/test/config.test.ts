@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readBackendRuntimeConfig } from '../src/config.js';
+import { readBackendConfig, readBackendRuntimeConfig } from '../src/config.js';
 import { TEST_SESSION_SECRET } from './support/auth-test-app.js';
 
 describe('runtime dependency configuration', () => {
@@ -14,6 +14,7 @@ describe('runtime dependency configuration', () => {
     expect(configuration.mongodbUri).toBe('mongodb://127.0.0.1:27017/casetogether_test');
     expect(configuration.sessionSecret).toBe(TEST_SESSION_SECRET);
     expect(configuration.authCookie.secure).toBe(true);
+    expect(configuration.authCookie.sameSite).toBe('none');
   });
 
   it.each([
@@ -44,5 +45,31 @@ describe('runtime dependency configuration', () => {
       expect(thrown.message).not.toContain(secret);
       expect(thrown.message).not.toContain(uri);
     }
+  });
+});
+
+describe('auth cookie SameSite and Secure by environment', () => {
+  it.each(['development', 'test'] as const)('uses SameSite=Lax without Secure in %s', (nodeEnv) => {
+    const cookie = readBackendConfig({ NODE_ENV: nodeEnv }).authCookie;
+
+    expect(cookie).toMatchObject({
+      name: 'ct_session',
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: false,
+      path: '/',
+    });
+  });
+
+  it('uses SameSite=None with Secure in production for the cross-site frontend', () => {
+    const cookie = readBackendConfig({ NODE_ENV: 'production' }).authCookie;
+
+    expect(cookie).toMatchObject({
+      name: 'ct_session',
+      httpOnly: true,
+      sameSite: 'none',
+      secure: true,
+      path: '/',
+    });
   });
 });

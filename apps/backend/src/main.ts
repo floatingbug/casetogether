@@ -61,7 +61,8 @@ async function start(): Promise<void> {
     gameSessionService,
     realtimeGateway,
   });
-  const server = app.listen(config.port, '127.0.0.1', () => {
+  const host = process.env['HOST'] ?? '127.0.0.1';
+  const server = app.listen(config.port, host, () => {
     console.log(JSON.stringify({ event: 'backend_listening', port: config.port }));
   });
   realtimeGateway.attach(server);

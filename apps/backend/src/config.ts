@@ -8,7 +8,7 @@ export type NodeEnvironment = 'development' | 'test' | 'production';
 export interface AuthCookieConfig {
   name: typeof AUTH_COOKIE_NAME;
   httpOnly: true;
-  sameSite: 'lax';
+  sameSite: 'lax' | 'none';
   secure: boolean;
   path: '/';
 }
@@ -75,7 +75,7 @@ export function readBackendConfig(environment: NodeJS.ProcessEnv = process.env):
     authCookie: {
       name: AUTH_COOKIE_NAME,
       httpOnly: true,
-      sameSite: 'lax',
+      sameSite: nodeEnv === 'production' ? 'none' : 'lax',
       secure: nodeEnv === 'production',
       path: '/',
     },
