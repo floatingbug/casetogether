@@ -146,10 +146,10 @@ der absolute API-Origin zu setzen, weil der Vercel-Origin kein Backend ausliefer
   `VITE_API_ORIGIN` arbeiten; ohne den Wert treffen API-Aufrufe die Vercel-Auslieferung und nicht
   das Backend.
 - **Cross-Site-Cookies.** Für `casetogether.vercel.app` → `api.casetogether.tasse-voll-code.de`
-  verlangt der Browser ein Session-Cookie mit `SameSite=None; Secure`. Das Backend muss zudem
-  `https://casetogether.vercel.app` als exakte CORS-Origin zulassen (`FRONTEND_ORIGIN`, keine
-  Wildcards). Die ADR-002-Basis sieht `SameSite=Lax` vor; die Anpassung ist Backend-Eigentum und
-  wird dort beim Backend-Deployment geprüft, nicht in diesem Task geändert.
+  setzt Produktion `SameSite=None; Secure` (ADR-004); Entwicklung und Test bleiben bei
+  `SameSite=Lax` ohne `Secure`. Das Backend muss `https://casetogether.vercel.app` als exakte
+  CORS-Origin zulassen (`FRONTEND_ORIGIN`, keine Wildcards). Jede Preview-Origin müsste separat
+  ergänzt werden.
 - **Preview-Origins.** Jedes Preview Deployment hat eine eigene URL. Sollen Preview-Builds
   authentifizierte Aufrufe ausführen, müssen diese Origins zusätzlich exakt in der
   Backend-Konfiguration eingetragen werden. Ein pauschales `*` ist unzulässig.

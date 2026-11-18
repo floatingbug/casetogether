@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
+import express from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
@@ -79,6 +80,24 @@ describe('ADR-002 origin and cookie baseline', () => {
     });
     const production = readBackendConfig({ NODE_ENV: 'production' });
     expect(production.authCookie.secure).toBe(true);
+  });
+
+  it('trusts only loopback proxies for forwarded client addresses', async () => {
+    const app = createSecurityTestApp();
+    expect(app.get('trust proxy')).toBe('loopback');
+
+    const probe = express();
+    probe.set('trust proxy', app.get('trust proxy'));
+    probe.get('/client-ip', (clientRequest, clientResponse) => {
+      clientResponse.status(200).json({ ip: clientRequest.ip });
+    });
+
+    const response = await request(probe)
+      .get('/client-ip')
+      .set('X-Forwarded-For', '203.0.113.7')
+      .expect(200);
+
+    expect(response.body).toEqual({ ip: '203.0.113.7' });
   });
 
   it('validates origins for direct application composition too', () => {

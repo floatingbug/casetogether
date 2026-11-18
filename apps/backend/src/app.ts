@@ -188,6 +188,7 @@ export function createApp(options: AppOptions = {}): Express {
   const app = express();
 
   app.disable('x-powered-by');
+  app.set('trust proxy', 'loopback');
   app.use(
     helmet({
       contentSecurityPolicy: {
