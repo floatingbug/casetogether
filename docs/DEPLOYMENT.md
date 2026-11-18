@@ -2,18 +2,17 @@
 
 Dieses Kapitel beschreibt die Bereitstellung. Maßgeblich für Regeln, Verträge und
 Sicherheitsentscheidungen bleiben `AGENTS.md`, `docs/ARCHITECTURE.md`, die ADRs und `contracts/`.
-Der Task T011 richtet die Vercel-Konfiguration des Frontends und diese Dokumentation ein. Am
-18.11.2026 wurde das Frontend erstmals produktiv deployt. Das Backend ist weiterhin nicht
-bereitgestellt; der VPS-Schritt (nginx, PM2, TLS, MongoDB) steht aus. Es wurde kein
-kostenpflichtiger Dienst aktiviert.
+Der Task T011 richtet die Bereitstellung von Frontend und Backend ein. Am 18.11.2026 wurden beide
+erstmals produktiv deployt: das Frontend auf Vercel, das Backend auf dem VPS hinter nginx und PM2.
+Es wurde kein kostenpflichtiger Dienst aktiviert.
 
 ## Topologie
 
 | Baustein                       | Ort                                                                                     | Status                  |
 | ------------------------------ | --------------------------------------------------------------------------------------- | ----------------------- |
 | Frontend (statische Vue-3-SPA) | Vercel, `https://casetogether.vercel.app`                                               | seit 2026-11-18 deployt |
-| Backend (Express + Socket.IO)  | VPS hinter nginx, PM2 als Prozessmanager, `https://api.casetogether.tasse-voll-code.de` | noch nicht deployt      |
-| MongoDB                        | auf dem Backend-Host, nur serverseitig erreichbar                                       | noch nicht deployt      |
+| Backend (Express + Socket.IO)  | VPS hinter nginx, PM2 als Prozessmanager, `https://api.casetogether.tasse-voll-code.de` | seit 2026-11-18 deployt |
+| MongoDB                        | auf dem Backend-Host, `127.0.0.1:27017`, nur serverseitig erreichbar                    | läuft lokal             |
 
 Das Frontend wird als Static Site ausgeliefert. Es enthält keinen Server, keine Datenbanklogik und
 keine Secrets. Das Backend bleibt die Autorität für Identität, Berechtigungen, Spielzustand und
@@ -90,6 +89,47 @@ werden unverändert ausgeliefert; nur unbekannte Pfade wie `/login` oder `/rooms
 History-Modus benötigt zu werden. Header-, Redirect- und Proxy-Experimente sind ebenfalls nicht
 Teil dieser Konfiguration.
 
+## Backend auf dem VPS
+
+| Aspekt             | Wert                                                                                      |
+| ------------------ | ----------------------------------------------------------------------------------------- |
+| Host               | `194.195.241.51`, Ubuntu 22.04, 1 vCPU, 957 MiB RAM, 512 MiB Swap                         |
+| Laufzeit           | Node.js 22.19.0 aus dem nvm-Verzeichnis des Benutzers `tom`, PM2 5.3.0                    |
+| Prozess            | PM2-App `casetogether-api`, Port `3100`, gebunden an `127.0.0.1`                          |
+| Reverse Proxy      | nginx `/etc/nginx/sites-available/casetogether-api` mit WebSocket-Upgrade                 |
+| TLS                | Let's Encrypt via certbot für `api.casetogether.tasse-voll-code.de`, automatische Renewal |
+| Datenbank          | MongoDB `127.0.0.1:27017`, Datenbank `casetogether`, ohne Auth nur lokal erreichbar       |
+| Deploy-Verzeichnis | `/home/tom/projects/casetogether-api` (Eigentümer `tom`)                                  |
+
+Die PM2-Prozessliste ist per `pm2 save` gesichert; die systemd-Unit `pm2-tom` ist aktiviert und startet sie nach einem Reboot. Die Laufzeitumgebung steckt in `/home/tom/projects/casetogether-api/ecosystem.config.cjs`
+(`chmod 600`, nicht im Repository): `NODE_ENV=production`, `PORT=3100`, `HOST=127.0.0.1`,
+`MONGODB_URI`, `SESSION_SECRET` (48 zufällige Bytes, base64) und
+`FRONTEND_ORIGIN=https://casetogether.vercel.app`. Weitere Origins werden exakt und einzeln
+ergänzt; es gibt keine Wildcards.
+
+Auf dem Server wird nicht gebaut (1 vCPU, knapp 1 GiB RAM). Stattdessen entsteht lokal ein
+selbstständiges Produktionsartefakt ohne Dev-Abhängigkeiten:
+
+```bash
+pnpm --filter @casetogether/shared build
+pnpm --filter @casetogether/backend build
+pnpm --filter @casetogether/backend deploy --prod /tmp/ct-backend
+rsync -a --delete --exclude=ecosystem.config.cjs --chown=tom:tom \
+  /tmp/ct-backend/ casetogether-vps:/home/tom/projects/casetogether-api/
+ssh casetogether-vps 'su - tom -c "pm2 restart casetogether-api --update-env && pm2 save"'
+```
+
+Prüfung und Betrieb:
+
+```bash
+curl -fsS https://api.casetogether.tasse-voll-code.de/api/v1/health
+curl -fsS https://api.casetogether.tasse-voll-code.de/api/v1/ready
+ssh casetogether-vps 'su - tom -c "pm2 logs casetogether-api --lines 100"'
+```
+
+Ein Rollback deployt denselben Ablauf aus einem früheren Commit. Es gibt bewusst keine
+automatische Artefakthistorie auf dem Server.
+
 ## Automatische Deployments und Rollback
 
 - Push auf einen Branch oder Öffnen/Aktualisieren eines Pull Requests erzeugt ein
@@ -124,7 +164,7 @@ der absolute API-Origin zu setzen, weil der Vercel-Origin kein Backend ausliefer
 ## Stand der Bereitstellung (2026-11-18)
 
 - GitHub: öffentliches Repository `floatingbug/casetogether`. CI läuft bei Pull Requests und auf
-  `main` (Lint, Typecheck, 86 Shared-, 339 Backend- und 147 Frontend-Tests, 5 Playwright-Smokes,
+  `main` (Lint, Typecheck, 86 Shared-, 347 Backend- und 147 Frontend-Tests, 5 Playwright-Smokes,
   Vertragsprüfung, Format und Build).
 - Vercel: Projekt mit dem Repository verbunden; Production-Deployments von `main` sind `READY`,
   Alias `https://casetogether.vercel.app`, Preview-Deployments je Branch/PR.
@@ -133,14 +173,19 @@ der absolute API-Origin zu setzen, weil der Vercel-Origin kein Backend ausliefer
   `Content-Type`.
 - `VITE_API_ORIGIN` ist im Production-Bundle enthalten; der Browser ruft
   `https://api.casetogether.tasse-voll-code.de/api/v1/me` auf.
-- Offen: Backend samt TLS und MongoDB. Bis dahin schlagen Auth-Aufrufe mit Netzwerk-/
-  Zertifikatsfehlern fehl; das ist kein Fehler der Static-Site-Auslieferung.
+- Backend: `https://api.casetogether.tasse-voll-code.de` liefert für `/api/v1/health` und
+  `/api/v1/ready` HTTP 200 (`mongodb: up`); TLS-Zertifikat von Let's Encrypt.
+- Auth live geprüft: Registrierung über die Production-Oberfläche (201), Session-Cookie mit
+  `HttpOnly; Secure; SameSite=None`, `/api/v1/me` mit Cookie 200, CORS-Preflight 204 mit exakter
+  Origin; fehlende/fremde Origins bleiben 403 `CSRF_REJECTED`.
+- Socket.IO live geprüft: Raum über die Oberfläche erstellt, Mitglied als „online“ projiziert,
+  Chatnachricht über `wss://api.casetogether.tasse-voll-code.de/socket.io` zugestellt.
+- Testkonten und Testraum wurden nach der Verifikation entfernt; die Datenbank enthält nur den
+  beim Start provisionierten Fall.
+- Offen: Backup/Restore, Monitoring und die restlichen T011-Akzeptanzkriterien.
 
 ## Bekannte Einschränkungen
 
-- **Backend noch nicht erreichbar.** Solange der VPS nicht deployt ist, schlagen Login,
-  Registrierung, Raum- und Spielaktionen fehl. Startseite, Routing, Deep-Links und Assets sind
-  dennoch prüfbar.
 - **`/api` auf dem Vercel-Origin ist kein Proxy.** Die SPA-Rewrite-Regel liefert für jeden Pfad
   `index.html`, auch für `/api/v1/...`. Das Frontend muss deshalb mit gesetztem
   `VITE_API_ORIGIN` arbeiten; ohne den Wert treffen API-Aufrufe die Vercel-Auslieferung und nicht
