@@ -319,7 +319,12 @@ describe('auth CSRF and payload boundaries', () => {
   it.each([
     ['missing origin', undefined, undefined, 'application/json'],
     ['untrusted origin', 'https://untrusted.example', undefined, 'application/json'],
-    ['cross-site fetch metadata', ALLOWED_ORIGIN, 'cross-site', 'application/json'],
+    [
+      'untrusted origin with cross-site metadata',
+      'https://untrusted.example',
+      'cross-site',
+      'application/json',
+    ],
     ['non-JSON body', ALLOWED_ORIGIN, undefined, 'text/plain'],
   ])('rejects %s before account creation', async (_name, origin, fetchSite, contentType) => {
     const { app } = await createAuthTestApp({ database: mongo.database });
@@ -340,6 +345,20 @@ describe('auth CSRF and payload boundaries', () => {
       expect(response.headers['access-control-allow-origin']).toBeUndefined();
     }
     expect(await mongo.database.collection('users').countDocuments()).toBe(0);
+  });
+
+  it('accepts an allowlisted origin when Sec-Fetch-Site is cross-site', async () => {
+    const { app } = await createAuthTestApp({ database: mongo.database });
+    const response = await request(app)
+      .post('/api/v1/auth/register')
+      .set('Origin', ALLOWED_ORIGIN)
+      .set('Sec-Fetch-Site', 'cross-site')
+      .set('Content-Type', 'application/json')
+      .send(registrationPayload('cross-site@example.com'))
+      .expect(201);
+
+    expect(response.body.data.displayName).toBeTruthy();
+    expect(await mongo.database.collection('users').countDocuments()).toBe(1);
   });
 
   it('rejects auth JSON above 16 KiB before validation or persistence', async () => {

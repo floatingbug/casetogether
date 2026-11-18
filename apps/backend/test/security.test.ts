@@ -49,10 +49,20 @@ describe('ADR-002 origin and cookie baseline', () => {
     expect(response.body.error.stack).toBeUndefined();
   });
 
-  it('rejects cross-site fetch metadata even with an allowlisted origin value', async () => {
+  it('accepts an allowlisted origin even when Sec-Fetch-Site is cross-site', async () => {
     const response = await request(createSecurityTestApp())
       .post('/api/v1/not-implemented')
       .set('Origin', allowedOrigin)
+      .set('Sec-Fetch-Site', 'cross-site')
+      .send({})
+      .expect(404);
+    expect(response.body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('still rejects an untrusted origin with cross-site fetch metadata', async () => {
+    const response = await request(createSecurityTestApp())
+      .post('/api/v1/not-implemented')
+      .set('Origin', 'https://untrusted.example')
       .set('Sec-Fetch-Site', 'cross-site')
       .send({})
       .expect(403);

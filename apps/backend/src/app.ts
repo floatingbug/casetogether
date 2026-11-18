@@ -97,14 +97,12 @@ function createOriginProtection(allowedOrigins: ReadonlySet<string>): RequestHan
       return;
     }
 
+    // The exact Origin allowlist plus the JSON requirement is the CSRF boundary. A cross-site
+    // Sec-Fetch-Site is expected for the separately deployed frontend and API (ADR-004), so it
+    // must not override an explicitly allowlisted origin.
     const origin = request.headers.origin;
-    const fetchSite = request.headers['sec-fetch-site'];
-    if (
-      origin === undefined ||
-      !allowedOrigins.has(origin) ||
-      (typeof fetchSite === 'string' && fetchSite.toLowerCase() === 'cross-site')
-    ) {
-      sendError(response, 403, 'CSRF_REJECTED', 'Origin or fetch metadata was rejected');
+    if (origin === undefined || !allowedOrigins.has(origin)) {
+      sendError(response, 403, 'CSRF_REJECTED', 'Origin was rejected');
       return;
     }
     if (hasRequestBody(request) && request.is('application/json') !== 'application/json') {

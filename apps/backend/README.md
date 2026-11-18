@@ -66,12 +66,13 @@ Bodies enthalten ausschließlich die durch `PublicUserSchema` validierte ID und 
   HMAC-SHA-256-Signatur mit zweckgebunden aus `SESSION_SECRET` abgeleitetem Schlüssel.
 - MongoDB speichert ausschließlich `sessionIdHash` (SHA-256 der 256-Bit-ID), `userId`, Schema-/Zeit-
   und Revocationsdaten. Weder ID, Signatur noch Cookie-Header werden persistiert.
-- `ct_session` besitzt `HttpOnly`, `SameSite=Lax`, `Path=/`, Sekunden-`Max-Age=604800`, absolutes
-  `Expires` nach sieben Tagen und in Produktion `Secure`. `expiresAt <= now` und jedes gesetzte
+- `ct_session` besitzt `HttpOnly`, `Path=/`, Sekunden-`Max-Age=604800`, absolutes `Expires` nach
+  sieben Tagen und in Produktion `Secure`. `SameSite` ist in Entwicklung/Test `Lax` und in
+  Produktion `None` für die getrennten Vercel-/VPS-Origins (ADR-004). `expiresAt <= now` und jedes gesetzte
   `revokedAt` werden unabhängig vom asynchronen TTL-Cleanup fachlich abgelehnt.
-- Unsafe Requests benötigen einen erlaubten Origin, keine cross-site Fetch Metadata und bei Body
-  `application/json`. Credential-CORS bleibt auf exakte Origins begrenzt. JSON ist auf 16 KiB
-  begrenzt.
+- Unsafe Requests benötigen einen exakt erlaubten Origin und bei Body `application/json`.
+  Cross-site `Sec-Fetch-Site` ist für das getrennte Frontend erwartet und kein Ablehnungsgrund
+  (ADR-004). Credential-CORS bleibt auf exakte Origins begrenzt. JSON ist auf 16 KiB begrenzt.
 
 ### Indizes und Rate Limits
 

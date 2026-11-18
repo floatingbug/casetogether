@@ -78,14 +78,12 @@ export class HandshakeAuthenticator {
   }
 
   private async authenticateUncached(request: IncomingMessage): Promise<HandshakeResult> {
+    // The exact Origin allowlist is authoritative for the handshake. A cross-site
+    // Sec-Fetch-Site is expected for the separately deployed frontend and API (ADR-004), so it
+    // must not override an explicitly allowlisted origin.
     const origin = request.headers.origin;
-    const fetchSite = request.headers['sec-fetch-site'];
-    if (
-      origin === undefined ||
-      !this.allowedOrigins.has(origin) ||
-      (typeof fetchSite === 'string' && fetchSite.toLowerCase() === 'cross-site')
-    ) {
-      return this.failure(403, 'CSRF_REJECTED', 'Origin or fetch metadata was rejected');
+    if (origin === undefined || !this.allowedOrigins.has(origin)) {
+      return this.failure(403, 'CSRF_REJECTED', 'Origin was rejected');
     }
 
     const cookieValue = readAuthCookie(request.headers.cookie, this.cookieConfiguration);

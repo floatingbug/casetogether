@@ -8,7 +8,7 @@ Die verbindlichen Schemas und Statuscodes des freigegebenen T001-Vertrags-Freeze
 - Alle nicht leeren Erfolgsresponses sind `{ "data": T }`, Fehler sind `{ "error": ApiError }`.
 - Öffentliche IDs sind opaque Strings; Server-Zeitstempel sind RFC 3339 in UTC.
 - Auth erfolgt mit dem HttpOnly-Cookie `ct_session` gemäß ADR-002. Es gibt keine Bearer-Token-Alternative im Clientvertrag.
-- Unsafe REST verlangt zugelassenes `Origin`, passende Fetch Metadata und `Content-Type: application/json`, sofern ein Body vorhanden ist.
+- Unsafe REST verlangt einen exakt zugelassenen `Origin` und `Content-Type: application/json`, sofern ein Body vorhanden ist. Cross-site `Sec-Fetch-Site` ist für die getrennten Vercel-/VPS-Origins erwartet (ADR-004).
 - Authentifizierte Endpunkte sind in OpenAPI per `cookieAuth` markiert. Nicht sichtbare Ressourcen geben generisch `NOT_FOUND` zurück.
 - `clientRequestId` ist eine UUID v4 für idempotente Raum-/Spielaktionen. `expectedVersion` schützt versionierte Mutationen.
 - Listen ohne aktuelles Wachstum sind kleine vollständige Arrays; `recentMessages` ist auf 50 und Case-Listen auf 100 begrenzt. Neue Pagination erfordert eine Vertragserweiterung.
@@ -16,22 +16,22 @@ Die verbindlichen Schemas und Statuscodes des freigegebenen T001-Vertrags-Freeze
 
 ## REST-Endpunkte
 
-| Methode/Pfad | Auth | Request | Ergebnis |
-|---|---|---|---|
-| `GET /health` | nein | – | Prozess-Liveness, unabhängig von DB/Provider |
-| `GET /ready` | nein | – | Readiness nur mit erforderlicher MongoDB; KI/Key kein Check |
-| `POST /auth/register` | nein | E-Mail, Passwort 12–128, Anzeigename | `201 PublicUser`, setzt Auth-Cookie |
-| `POST /auth/login` | nein | E-Mail, Passwort | `200 PublicUser`, generischer `INVALID_CREDENTIALS` |
-| `POST /auth/logout` | optional | – | `204`, revoziert und löscht Cookie; idempotent |
-| `GET /me` | ja | – | aktueller `PublicUser` |
-| `POST /rooms` | ja | `clientRequestId` | `201` initial `outcome = created` mit Code; identischer persistenter Replay `200 outcome = replayed, invitation = null` ohne Code |
-| `POST /rooms/join` | ja | `clientRequestId`, gruppierter Einladungscode | `200 RoomSnapshot`; bestehendes Mitglied idempotent |
-| `GET /rooms/{roomId}` | Mitglied | – | `200 RoomSnapshot`, niemals Code |
-| `POST /rooms/{roomId}/invitation/rotate` | Host | `clientRequestId`, `expectedVersion` | initial `outcome = rotated` mit neuem Code; Replay `outcome = replayed, invitation = null`; nie Code im Receipt |
-| `GET /cases` | ja | – | `{ items: CaseSummary[] }`, keine Antworten/Lösung |
-| `POST /rooms/{roomId}/start` | Host | `clientRequestId`, `caseId`, `expectedVersion` | `200 GameSnapshot`, Phase `investigating` |
-| `GET /sessions/{sessionId}` | Raummitglied | – | empfängerspezifischer `GameSnapshot` |
-| `POST /sessions/{sessionId}/final-submission` | Raummitglied | `clientRequestId`, `expectedVersion`, `suspectId` | `200 GameSnapshot`, atomar `completed` inklusive Ergebnis |
+| Methode/Pfad                                  | Auth         | Request                                           | Ergebnis                                                                                                                          |
+| --------------------------------------------- | ------------ | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /health`                                 | nein         | –                                                 | Prozess-Liveness, unabhängig von DB/Provider                                                                                      |
+| `GET /ready`                                  | nein         | –                                                 | Readiness nur mit erforderlicher MongoDB; KI/Key kein Check                                                                       |
+| `POST /auth/register`                         | nein         | E-Mail, Passwort 12–128, Anzeigename              | `201 PublicUser`, setzt Auth-Cookie                                                                                               |
+| `POST /auth/login`                            | nein         | E-Mail, Passwort                                  | `200 PublicUser`, generischer `INVALID_CREDENTIALS`                                                                               |
+| `POST /auth/logout`                           | optional     | –                                                 | `204`, revoziert und löscht Cookie; idempotent                                                                                    |
+| `GET /me`                                     | ja           | –                                                 | aktueller `PublicUser`                                                                                                            |
+| `POST /rooms`                                 | ja           | `clientRequestId`                                 | `201` initial `outcome = created` mit Code; identischer persistenter Replay `200 outcome = replayed, invitation = null` ohne Code |
+| `POST /rooms/join`                            | ja           | `clientRequestId`, gruppierter Einladungscode     | `200 RoomSnapshot`; bestehendes Mitglied idempotent                                                                               |
+| `GET /rooms/{roomId}`                         | Mitglied     | –                                                 | `200 RoomSnapshot`, niemals Code                                                                                                  |
+| `POST /rooms/{roomId}/invitation/rotate`      | Host         | `clientRequestId`, `expectedVersion`              | initial `outcome = rotated` mit neuem Code; Replay `outcome = replayed, invitation = null`; nie Code im Receipt                   |
+| `GET /cases`                                  | ja           | –                                                 | `{ items: CaseSummary[] }`, keine Antworten/Lösung                                                                                |
+| `POST /rooms/{roomId}/start`                  | Host         | `clientRequestId`, `caseId`, `expectedVersion`    | `200 GameSnapshot`, Phase `investigating`                                                                                         |
+| `GET /sessions/{sessionId}`                   | Raummitglied | –                                                 | empfängerspezifischer `GameSnapshot`                                                                                              |
+| `POST /sessions/{sessionId}/final-submission` | Raummitglied | `clientRequestId`, `expectedVersion`, `suspectId` | `200 GameSnapshot`, atomar `completed` inklusive Ergebnis                                                                         |
 
 Das Lobby-Verlassen und der Chat laufen über den unten dokumentierten authentifizierten Socket-Vertrag. Es gibt keinen Socket-Join per Einladungscode; dafür ist ausschließlich `POST /rooms/join` vorgesehen.
 

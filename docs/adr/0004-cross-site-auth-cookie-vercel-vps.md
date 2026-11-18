@@ -23,7 +23,10 @@ wurde für den aktuellen Schritt bewusst nicht eingerichtet.
    HTTP-Entwicklung funktioniert. Ein `Domain`-Attribut wird nicht gesetzt.
 2. Die bestehenden Schutzgrenzen bleiben unverändert: exakte CORS-Allowlist mit Credentials,
    Origin-Prüfung für jede unsichere Methode, JSON-Pflicht und serverseitige Session-/
-   Berechtigungsprüfung. `SameSite=None` ersetzt diese Prüfungen nicht.
+   Berechtigungsprüfung. `SameSite=None` ersetzt diese Prüfungen nicht. `Sec-Fetch-Site:
+cross-site` ist in dieser Topologie erwartbar; maßgeblich ist ausschließlich, ob der
+   übermittelte `Origin` exakt in der Allowlist steht. Fehlende oder fremde Origins bleiben
+   abgelehnt.
 3. Das Backend bindet ausschließlich an `127.0.0.1` (optional per `HOST` überschreibbar). nginx
    terminiert TLS und setzt `X-Forwarded-For`/`X-Forwarded-Proto`. Express vertraut nur
    Loopback-Proxies (`trust proxy: 'loopback'`), damit IP-Rate-Limits echte Client-IPs sehen und
