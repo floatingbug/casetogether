@@ -153,5 +153,6 @@ pnpm --filter @casetogether/frontend test
 
 Auth-Sessions und -Persistenz (T003), Login-/Routing-/API-Client-UI (T004), Räume und reale
 Repositories (T003/T005), Socket.IO (T006), deterministische Engine und Fallinhalt (T007),
-optionale KI (T008), durchgängiger Spielablauf (T009) und Betrieb/Deployment (T011) sind bewusst
-nicht vorimplementiert. Es gibt keine Produktionsressourcen oder Deployment-Schritte in CI.
+optionale KI (T008), durchgängiger Spielablauf (T009) und Betrieb/Deployment (T011) sind nicht
+Bestandteil dieses Gerüsts; Bereitstellung und Vercel-Konfiguration beschreibt
+`docs/DEPLOYMENT.md`. Es gibt keine Deployment-Schritte in CI.

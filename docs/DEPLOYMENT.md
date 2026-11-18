@@ -1,17 +1,19 @@
 # Deployment
 
-Dieses Kapitel beschreibt die geplante Bereitstellung. Maßgeblich für Regeln, Verträge und
+Dieses Kapitel beschreibt die Bereitstellung. Maßgeblich für Regeln, Verträge und
 Sicherheitsentscheidungen bleiben `AGENTS.md`, `docs/ARCHITECTURE.md`, die ADRs und `contracts/`.
-Der Task T011 richtet ausschließlich die Vercel-Konfiguration des Frontends und diese Dokumentation
-ein. Es wurde kein produktives Deployment ausgeführt und kein kostenpflichtiger Dienst aktiviert.
+Der Task T011 richtet die Vercel-Konfiguration des Frontends und diese Dokumentation ein. Am
+18.11.2026 wurde das Frontend erstmals produktiv deployt. Das Backend ist weiterhin nicht
+bereitgestellt; der VPS-Schritt (nginx, PM2, TLS, MongoDB) steht aus. Es wurde kein
+kostenpflichtiger Dienst aktiviert.
 
 ## Topologie
 
-| Baustein                       | Ort                                                                                     | Status                     |
-| ------------------------------ | --------------------------------------------------------------------------------------- | -------------------------- |
-| Frontend (statische Vue-3-SPA) | Vercel, `https://casetogether.vercel.app`                                               | in diesem Task vorbereitet |
-| Backend (Express + Socket.IO)  | VPS hinter nginx, PM2 als Prozessmanager, `https://api.casetogether.tasse-voll-code.de` | noch nicht deployt         |
-| MongoDB                        | auf dem Backend-Host, nur serverseitig erreichbar                                       | noch nicht deployt         |
+| Baustein                       | Ort                                                                                     | Status                  |
+| ------------------------------ | --------------------------------------------------------------------------------------- | ----------------------- |
+| Frontend (statische Vue-3-SPA) | Vercel, `https://casetogether.vercel.app`                                               | seit 2026-11-18 deployt |
+| Backend (Express + Socket.IO)  | VPS hinter nginx, PM2 als Prozessmanager, `https://api.casetogether.tasse-voll-code.de` | noch nicht deployt      |
+| MongoDB                        | auf dem Backend-Host, nur serverseitig erreichbar                                       | noch nicht deployt      |
 
 Das Frontend wird als Static Site ausgeliefert. Es enthält keinen Server, keine Datenbanklogik und
 keine Secrets. Das Backend bleibt die Autorität für Identität, Berechtigungen, Spielzustand und
@@ -119,6 +121,21 @@ spricht `/api/v1` und Socket.IO relativ zum ausliefernden Origin an. Das funktio
 dem Dev-Proxy und ist die Voreinstellung für lokale Entwicklung. Für die Vercel-Bereitstellung ist
 der absolute API-Origin zu setzen, weil der Vercel-Origin kein Backend ausliefert (siehe unten).
 
+## Stand der Bereitstellung (2026-11-18)
+
+- GitHub: öffentliches Repository `floatingbug/casetogether`. CI läuft bei Pull Requests und auf
+  `main` (Lint, Typecheck, 86 Shared-, 339 Backend- und 147 Frontend-Tests, 5 Playwright-Smokes,
+  Vertragsprüfung, Format und Build).
+- Vercel: Projekt mit dem Repository verbunden; Production-Deployments von `main` sind `READY`,
+  Alias `https://casetogether.vercel.app`, Preview-Deployments je Branch/PR.
+- Statische Auslieferung geprüft: `/` und `/login` liefern HTTP 200 mit identischem
+  `index.html` (SPA-Fallback), `/assets/index-*.js` und `.css` liefern HTTP 200 mit korrektem
+  `Content-Type`.
+- `VITE_API_ORIGIN` ist im Production-Bundle enthalten; der Browser ruft
+  `https://api.casetogether.tasse-voll-code.de/api/v1/me` auf.
+- Offen: Backend samt TLS und MongoDB. Bis dahin schlagen Auth-Aufrufe mit Netzwerk-/
+  Zertifikatsfehlern fehl; das ist kein Fehler der Static-Site-Auslieferung.
+
 ## Bekannte Einschränkungen
 
 - **Backend noch nicht erreichbar.** Solange der VPS nicht deployt ist, schlagen Login,
@@ -141,9 +158,10 @@ der absolute API-Origin zu setzen, weil der Vercel-Origin kein Backend ausliefer
   Registrierungsdomain (beispielsweise `app.casetogether.tasse-voll-code.de`) die robustere
   Lösung; dann genügt wieder ein Same-Site-Cookie. Das ist eine spätere Infrastrukturentscheidung
   und nicht Teil dieses Tasks.
-- **Auswertung von `VITE_API_ORIGIN`.** Die Variable wird im Frontend-Client ausgewertet. Solange
-  diese Auswertung nicht integriert ist, verwendet das Frontend relative Pfade und erreicht auf
-  Vercel kein Backend.
+- **Ungültiger `VITE_API_ORIGIN`.** Ein Wert mit Pfad, Query, Credentials oder ein `http:`-Origin
+  außerhalb von `localhost`/`127.0.0.1` bricht den App-Start im Browser. Der Vite-Build selbst
+  bleibt erfolgreich, weil App-Module beim Build nicht ausgeführt werden; der Fehler zeigt sich
+  deshalb erst beim Laden der Seite.
 - **Öffentliche Werte.** `VITE_API_ORIGIN` ist kein Secret und steht im Browser-Bundle. Deshalb
   enthält das Frontend-Bundle keine Tokens und keine Schlüssel; die Sitzung bleibt ausschließlich
   im HttpOnly-Cookie.
