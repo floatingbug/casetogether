@@ -9,4 +9,6 @@ coverage/
 playwright-report/
 test-results/
 .worktrees/
+# Lokale Vercel-Projektverknüpfung (Projekt-/Org-IDs), gehört nicht ins Repository.
+.vercel/
 .obsidian/workspace.json

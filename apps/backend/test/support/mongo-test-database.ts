@@ -1,11 +1,12 @@
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MongoClient, type Db } from 'mongodb';
 import { MongoMemoryServer } from 'mongodb-memory-server-core';
 
 export const TEST_MONGODB_VERSION = '7.0.24';
-export const TEST_MONGODB_BINARY_DIRECTORY = '/tmp/opencode/casetogether-mongodb-binaries';
-const TEST_TEMP_DIRECTORY = '/tmp/opencode';
+export const TEST_MONGODB_BINARY_DIRECTORY = join(tmpdir(), 'casetogether-mongodb-binaries');
+const TEST_TEMP_DIRECTORY = tmpdir();
 
 export interface MongoTestDatabase {
   database: Db;

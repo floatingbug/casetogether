@@ -12,8 +12,8 @@
     "build": "pnpm --filter @casetogether/shared build && pnpm --filter @casetogether/backend build && pnpm --filter @casetogether/frontend build",
     "contracts:check": "node scripts/check-openapi.mjs",
     "dev": "concurrently --names backend,frontend --prefix-colors blue,green \"pnpm --filter @casetogether/backend dev\" \"pnpm --filter @casetogether/frontend dev\"",
-    "format": "prettier --write apps packages scripts .github docs/DEVELOPMENT.md tasks/T002.md tasks/STATUS.md package.json pnpm-workspace.yaml tsconfig.json tsconfig.base.json eslint.config.js .prettierrc.json",
-    "format:check": "prettier --check apps packages scripts .github docs/DEVELOPMENT.md tasks/T002.md tasks/STATUS.md package.json pnpm-workspace.yaml tsconfig.json tsconfig.base.json eslint.config.js .prettierrc.json",
+    "format": "prettier --write apps packages scripts .github docs/DEVELOPMENT.md docs/DEPLOYMENT.md tasks/T002.md tasks/STATUS.md package.json pnpm-workspace.yaml tsconfig.json tsconfig.base.json eslint.config.js .prettierrc.json",
+    "format:check": "prettier --check apps packages scripts .github docs/DEVELOPMENT.md docs/DEPLOYMENT.md tasks/T002.md tasks/STATUS.md package.json pnpm-workspace.yaml tsconfig.json tsconfig.base.json eslint.config.js .prettierrc.json",
     "lint": "eslint .",
     "test": "pnpm --recursive --if-present test",
     "typecheck": "pnpm --recursive --if-present typecheck"
