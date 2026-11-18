@@ -26,8 +26,9 @@ Bewusst wird `mongodb-memory-server-core` und nicht das Wrapperpaket mit Postins
 verwendet. Dadurch bleibt die zentral freigegebene Build-Skriptliste unverändert. Der Download
 erfolgt erst explizit beim Start der Testinstanz.
 
-- Download-/Entpackcache: `/tmp/opencode/casetogether-mongodb-binaries`
-- Pro Suite frisches Datenverzeichnis: `/tmp/opencode/casetogether-t003-db-*/mongod-data`
+- Download-/Entpackcache: `casetogether-mongodb-binaries` im System-Temp-Verzeichnis
+  (`os.tmpdir()`, lokal z. B. `/tmp`, auf CI-Runnern das Runner-Temp)
+- Pro Suite frisches Datenverzeichnis: `casetogether-t003-db-*/mongod-data` im System-Temp-Verzeichnis
 - Kein DB-Verzeichnis im Repository und keine Testdaten im pnpm-Store.
 - Der erste Start ohne Cache lädt die für den Host gewählte MongoDB-Distribution. Danach wird der
   Cache wiederverwendet. Ein initialer Download benötigt Netzwerk zu den offiziellen MongoDB-
@@ -43,7 +44,7 @@ Host-Eigenschaft ist keine Zusicherung für andere Plattformen.
 
 `apps/backend/test/support/mongo-test-database.ts` kapselt den Lebenszyklus:
 
-1. Eindeutiges temporäres Elternverzeichnis unter `/tmp/opencode` erzeugen.
+1. Eindeutiges temporäres Elternverzeichnis unter `os.tmpdir()` erzeugen.
 2. `MongoMemoryServer.create` mit fixierter Version, Cachepfad, Loopback und Starttimeout von 60 s
    aufrufen; Port vergibt die Library dynamisch.
 3. Offiziellen Client mit der konkreten Test-URI verbinden; `buildInfo` ausführen.
