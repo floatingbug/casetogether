@@ -101,7 +101,7 @@ Teil dieser Konfiguration.
 | Datenbank          | MongoDB `127.0.0.1:27017`, Datenbank `casetogether`, ohne Auth nur lokal erreichbar       |
 | Deploy-Verzeichnis | `/home/tom/projects/casetogether-api` (Eigentümer `tom`)                                  |
 
-Die Laufzeitumgebung steckt in `/home/tom/projects/casetogether-api/ecosystem.config.cjs`
+Die PM2-Prozessliste ist per `pm2 save` gesichert; die systemd-Unit `pm2-tom` ist aktiviert und startet sie nach einem Reboot. Die Laufzeitumgebung steckt in `/home/tom/projects/casetogether-api/ecosystem.config.cjs`
 (`chmod 600`, nicht im Repository): `NODE_ENV=production`, `PORT=3100`, `HOST=127.0.0.1`,
 `MONGODB_URI`, `SESSION_SECRET` (48 zufällige Bytes, base64) und
 `FRONTEND_ORIGIN=https://casetogether.vercel.app`. Weitere Origins werden exakt und einzeln
@@ -182,7 +182,7 @@ der absolute API-Origin zu setzen, weil der Vercel-Origin kein Backend ausliefer
   Chatnachricht über `wss://api.casetogether.tasse-voll-code.de/socket.io` zugestellt.
 - Testkonten und Testraum wurden nach der Verifikation entfernt; die Datenbank enthält nur den
   beim Start provisionierten Fall.
-- Offen: PM2-Autostart, Backup/Restore, Monitoring und die restlichen T011-Akzeptanzkriterien.
+- Offen: Backup/Restore, Monitoring und die restlichen T011-Akzeptanzkriterien.
 
 ## Bekannte Einschränkungen
 
