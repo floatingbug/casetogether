@@ -1,6 +1,7 @@
 # ADR-002: Revozierbare Auth-Sessions in HttpOnly-Cookies
 
-- Status: Accepted (T001-Freeze, Nutzerfreigabe 2026-11-15)
+- Status: Accepted (T001-Freeze, Nutzerfreigabe 2026-11-15); `SameSite` in Produktion durch
+  ADR-004 präzisiert
 - Datum: 2026-11-15
 - Verantwortlich: Architect
 
@@ -12,7 +13,12 @@ Die Vue-SPA benötigt eine gemeinsame Authentifizierung für REST und Socket.IO.
 
 1. Der Server verwendet eine persistierte, revozierbare Auth-Session mit mindestens 256 Bit kryptografisch zufälliger, opaker Session-ID. Der Cookie-Wert besteht aus Session-ID und HMAC-SHA-256-Signatur mit einem zweckgebunden abgeleiteten Schlüssel aus `SESSION_SECRET`.
 2. MongoDB speichert ausschließlich einen Hash der Session-ID, `userId`, `createdAt`, `expiresAt` und technische Revocationsdaten. Weder Session-ID noch Cookie-Signatur werden geloggt oder an andere Clients übertragen.
-3. Das Cookie heißt `ct_session`, ist `HttpOnly`, `SameSite=Lax`, `Path=/` und in Produktion `Secure`. Die maximale Lebensdauer beträgt sieben Tage und entspricht der serverseitigen `expiresAt`; ein Cookie allein verlängert die Session nicht. Logout löscht bzw. revoziert den Serverdatensatz und setzt das Cookie mit identischen Pfad-/Sicherheitsattributen zurück.
+3. Das Cookie heißt `ct_session`, ist `HttpOnly`, `Path=/` und in Produktion `Secure`. In
+   Entwicklung und Test gilt `SameSite=Lax`. Für die getrennten Vercel-/VPS-Origins verlangt
+   Produktion `SameSite=None`, siehe ADR-004. Die maximale Lebensdauer beträgt sieben Tage und
+   entspricht der serverseitigen `expiresAt`; ein Cookie allein verlängert die Session nicht.
+   Logout löscht bzw. revoziert den Serverdatensatz und setzt das Cookie mit identischen
+   Pfad-/Sicherheitsattributen zurück.
 4. Browser-JavaScript speichert kein Bearer-Token in Local-/Session-Storage. Das Auth-Cookie wird automatisch bei zugelassenem REST-/Socket-Transport mitgesendet und ist niemals Teil von URL, Request-Body oder Client-DTO.
 5. Jede unsichere REST-Methode verlangt ein JSON-Body-Format, soweit ein Body vorgesehen ist, sowie einen exakt gegen `FRONTEND_ORIGIN` beziehungsweise die Server-Allowlist geprüften `Origin`. Abweichende/fehlende Origins oder cross-site `Sec-Fetch-Site` werden mit `CSRF_REJECTED` abgelehnt. Diese Prüfung ergänzt, nicht ersetzt SameSite und Autorisierung.
 6. CORS erlaubt nur konfigurierte Origins, `credentials: true`, benötigte Methoden und `Content-Type`; Wildcards mit Credentials sind verboten. Der Socket.IO-Handshake prüft denselben Origin-Allowlist-Eintrag, das Auth-Cookie und die serverseitige Session. Query-/Body-Tokens sind verboten.

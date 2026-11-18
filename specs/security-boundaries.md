@@ -14,7 +14,9 @@ Verbindliche Details: ADR-001 bis ADR-003, `contracts/shared-types.md`, `contrac
 ## 2. Authentifizierung und Session-Schutz
 
 - Zufällige Auth-Session-IDs besitzen mindestens 256 Bit Entropie, werden mit `SESSION_SECRET` zweckgebunden HMAC-signiert und nur gehasht persistiert. Logout/Revocation und sieben Tage absoluter Ablauf werden serverseitig geprüft.
-- Cookie `ct_session`: `HttpOnly`, `SameSite=Lax`, `Path=/`, in Produktion `Secure`; kein Local-/Session-Storage, URL-Query oder Socket-Handshake-Body für Tokens.
+- Cookie `ct_session`: `HttpOnly`, `Path=/`, in Produktion `Secure`; `SameSite=Lax` in
+  Entwicklung/Test, `SameSite=None` in Produktion für die getrennten Vercel-/VPS-Origins
+  (ADR-004); kein Local-/Session-Storage, URL-Query oder Socket-Handshake-Body für Tokens.
 - Unsafe REST verlangt Origin-Allowlist, geeignete Fetch Metadata und JSON. Diese Prüfungen sowie CORS werden serverseitig erzwungen und gelten auch für Socket-Handshake/Long-Polling.
 - CORS verwendet exakte Origins und Credentials, niemals `*` mit Credentials. Die Frontend-Origin ist ein Konfigurationswert, kein clientautorisierender Beweis ohne Serververgleich.
 - Socket-Verbindung wird beim serverseitigen Logout/Revocation getrennt. Auth beim Handshake ersetzt keine aktuelle fachliche Autorisierung bei jedem Command.
