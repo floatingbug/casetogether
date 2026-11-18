@@ -8,8 +8,8 @@ Die Rooms-Integrationstests verwenden denselben realen Testdatenbankpfad wie T00
 Client führt nach dem Start `buildInfo` aus. Es gibt weder ein Repository-Mock noch einen Fallback auf
 externe Infrastruktur. Keine Suite benötigt eine produktive MongoDB, Atlas, Live-LLMs oder echte Secrets.
 
-- Binary-/Entpackcache: `/tmp/opencode/casetogether-mongodb-binaries`
-- Pro Suite frisches Datenverzeichnis: `/tmp/opencode/casetogether-t003-db-*/mongod-data`
+- Binary-/Entpackcache: `casetogether-mongodb-binaries` im System-Temp-Verzeichnis (`os.tmpdir()`)
+- Pro Suite frisches Datenverzeichnis: `casetogether-t003-db-*/mongod-data` im System-Temp-Verzeichnis
 - Rooms-Suiten starten jeweils eine eigene Standalone-Instanz in `beforeAll` und stoppen sie in
   `afterAll` mit `stop({ doCleanup: true, force: true })`.
 - Der zentrale MongoClient wird vor dem `mongod`-Stop geschlossen; anschließend wird das temporäre
