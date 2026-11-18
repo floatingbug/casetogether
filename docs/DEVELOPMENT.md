@@ -1,7 +1,8 @@
 # Lokale Entwicklung und Verifikation
 
 Dieses Kapitel beschreibt das T002-Grundgerüst. Die fachlichen Regeln bleiben ausschließlich in
-`contracts/`, `specs/`, der Architektur und den ADRs maßgeblich.
+`contracts/`, `specs/`, der Architektur und den ADRs maßgeblich. Bereitstellung und
+Vercel-Konfiguration sind in `docs/DEPLOYMENT.md` beschrieben.
 
 ## Voraussetzungen
 
