@@ -10,7 +10,7 @@ Es wurde kein kostenpflichtiger Dienst aktiviert.
 
 | Baustein                       | Ort                                                                                     | Status                  |
 | ------------------------------ | --------------------------------------------------------------------------------------- | ----------------------- |
-| Frontend (statische Vue-3-SPA) | Vercel, `https://casetogether.vercel.app`                                               | seit 2026-11-18 deployt |
+| Frontend (statische Vue-3-SPA) | Vercel, `https://casetogether.tasse-voll-code.de` (Alias `casetogether.vercel.app`)     | seit 2026-11-18 deployt |
 | Backend (Express + Socket.IO)  | VPS hinter nginx, PM2 als Prozessmanager, `https://api.casetogether.tasse-voll-code.de` | seit 2026-11-18 deployt |
 | MongoDB                        | auf dem Backend-Host, `127.0.0.1:27017`, nur serverseitig erreichbar                    | läuft lokal             |
 
@@ -19,9 +19,11 @@ keine Secrets. Das Backend bleibt die Autorität für Identität, Berechtigungen
 Spielregeln. Browser sprechen das Backend ausschließlich über HTTPS an; die Datenbank ist vom
 Client aus nicht erreichbar.
 
-Frontend- und API-Origin liegen auf unterschiedlichen Registrierungsdomains (`vercel.app` und
-`tasse-voll-code.de`). Das ist ein Cross-Site-Setup und hat Folgen für Cookies und CORS, siehe
-„Bekannte Einschränkungen“.
+Die kanonische Frontend-Adresse ist `https://casetogether.tasse-voll-code.de` und liegt damit auf
+derselben Registrierungsdomain wie die API. Für diese Adresse ist das Session-Cookie first-party.
+Der Alias `https://casetogether.vercel.app` bleibt vorerst erreichbar und ist weiterhin
+cross-site; beide Origins stehen exakt in `FRONTEND_ORIGIN`, deshalb bleibt das Cookie
+`SameSite=None; Secure` (ADR-004).
 
 ## Vercel-Einrichtung
 
@@ -36,7 +38,10 @@ Frontend- und API-Origin liegen auf unterschiedlichen Registrierungsdomains (`ve
    setzen, Wert `https://api.casetogether.tasse-voll-code.de` (Origin ohne Pfad und ohne
    abschließenden Slash). Preview-Deployments erhalten denselben API-Origin, solange es keine
    eigene Backend-Vorschauumgebung gibt.
-5. Keine weiteren Variablen im Frontend-Projekt hinterlegen. Insbesondere gehören
+5. Custom Domain `casetogether.tasse-voll-code.de` im Projekt hinzufügen. DNS: `CNAME`
+   `casetogether` → `cname.vercel-dns.com` bei IONOS. Vercel stellt das TLS-Zertifikat aus.
+   `casetogether.vercel.app` bleibt als Alias bestehen.
+6. Keine weiteren Variablen im Frontend-Projekt hinterlegen. Insbesondere gehören
    `SESSION_SECRET`, `MONGODB_URI` und `OPENAI_API_KEY` ausschließlich in die Backend-Umgebung.
 
 `VITE_*`-Variablen werden zur Build-Zeit fest in das Bundle eingebettet und sind damit öffentlich
@@ -104,8 +109,8 @@ Teil dieser Konfiguration.
 Die PM2-Prozessliste ist per `pm2 save` gesichert; die systemd-Unit `pm2-tom` ist aktiviert und startet sie nach einem Reboot. Die Laufzeitumgebung steckt in `/home/tom/projects/casetogether-api/ecosystem.config.cjs`
 (`chmod 600`, nicht im Repository): `NODE_ENV=production`, `PORT=3100`, `HOST=127.0.0.1`,
 `MONGODB_URI`, `SESSION_SECRET` (48 zufällige Bytes, base64) und
-`FRONTEND_ORIGIN=https://casetogether.vercel.app`. Weitere Origins werden exakt und einzeln
-ergänzt; es gibt keine Wildcards.
+`FRONTEND_ORIGIN=https://casetogether.tasse-voll-code.de,https://casetogether.vercel.app`.
+Weitere Origins werden exakt und einzeln ergänzt; es gibt keine Wildcards.
 
 Auf dem Server wird nicht gebaut (1 vCPU, knapp 1 GiB RAM). Stattdessen entsteht lokal ein
 selbstständiges Produktionsartefakt ohne Dev-Abhängigkeiten:
@@ -216,8 +221,9 @@ der absolute API-Origin zu setzen, weil der Vercel-Origin kein Backend ausliefer
 - GitHub: öffentliches Repository `floatingbug/casetogether`. CI läuft bei Pull Requests und auf
   `main` (Lint, Typecheck, 86 Shared-, 347 Backend- und 147 Frontend-Tests, 5 Playwright-Smokes,
   Vertragsprüfung, Format und Build).
-- Vercel: Projekt mit dem Repository verbunden; Production-Deployments von `main` sind `READY`,
-  Alias `https://casetogether.vercel.app`, Preview-Deployments je Branch/PR.
+- Vercel: Projekt mit dem Repository verbunden; Production-Deployments von `main` sind `READY`.
+  Kanonisch: `https://casetogether.tasse-voll-code.de` (Custom Domain mit Let's-Encrypt-Zertifikat),
+  zusätzlich `https://casetogether.vercel.app`; Preview-Deployments je Branch/PR.
 - Statische Auslieferung geprüft: `/` und `/login` liefern HTTP 200 mit identischem
   `index.html` (SPA-Fallback), `/assets/index-*.js` und `.css` liefern HTTP 200 mit korrektem
   `Content-Type`.
@@ -225,9 +231,10 @@ der absolute API-Origin zu setzen, weil der Vercel-Origin kein Backend ausliefer
   `https://api.casetogether.tasse-voll-code.de/api/v1/me` auf.
 - Backend: `https://api.casetogether.tasse-voll-code.de` liefert für `/api/v1/health` und
   `/api/v1/ready` HTTP 200 (`mongodb: up`); TLS-Zertifikat von Let's Encrypt.
-- Auth live geprüft: Registrierung über die Production-Oberfläche (201), Session-Cookie mit
+- Auth live geprüft über die Custom Domain: Registrierung (201), Session-Cookie mit
   `HttpOnly; Secure; SameSite=None`, `/api/v1/me` mit Cookie 200, CORS-Preflight 204 mit exakter
   Origin; fehlende/fremde Origins bleiben 403 `CSRF_REJECTED`.
+- Socket.IO zusätzlich über die Custom Domain geprüft: Raum erstellt, Chatnachricht zugestellt.
 - Socket.IO live geprüft: Raum über die Oberfläche erstellt, Mitglied als „online“ projiziert,
   Chatnachricht über `wss://api.casetogether.tasse-voll-code.de/socket.io` zugestellt.
 - Testkonten und Testraum wurden nach der Verifikation entfernt; die Datenbank enthält nur den
@@ -248,11 +255,10 @@ der absolute API-Origin zu setzen, weil der Vercel-Origin kein Backend ausliefer
 - **Preview-Origins.** Jedes Preview Deployment hat eine eigene URL. Sollen Preview-Builds
   authentifizierte Aufrufe ausführen, müssen diese Origins zusätzlich exakt in der
   Backend-Konfiguration eingetragen werden. Ein pauschales `*` ist unzulässig.
-- **Safari und iOS** blockieren zunehmend Third-Party-Cookies zwischen unterschiedlichen
-  Registrierungsdomains. Für einen stabilen Betrieb ist eine Frontend-Subdomain unter derselben
-  Registrierungsdomain (beispielsweise `app.casetogether.tasse-voll-code.de`) die robustere
-  Lösung; dann genügt wieder ein Same-Site-Cookie. Das ist eine spätere Infrastrukturentscheidung
-  und nicht Teil dieses Tasks.
+- **Safari und iOS:** Auf der kanonischen Custom Domain ist das Cookie first-party und daher
+  nicht von der Third-Party-Blockade betroffen. Der Alias `casetogether.vercel.app` bleibt
+  cross-site; dort können Safari/iOS die Session blockieren. Nach einer Übergangszeit kann der
+  Alias entfernt und das Cookie wieder auf `SameSite=Lax` gestellt werden.
 - **Ungültiger `VITE_API_ORIGIN`.** Ein Wert mit Pfad, Query, Credentials oder ein `http:`-Origin
   außerhalb von `localhost`/`127.0.0.1` bricht den App-Start im Browser. Der Vite-Build selbst
   bleibt erfolgreich, weil App-Module beim Build nicht ausgeführt werden; der Fehler zeigt sich
@@ -263,7 +269,7 @@ der absolute API-Origin zu setzen, weil der Vercel-Origin kein Backend ausliefer
 
 ## Verifikations-Checkliste
 
-Nach einem Deployment von `main` auf `https://casetogether.vercel.app`:
+Nach einem Deployment von `main` auf `https://casetogether.tasse-voll-code.de`:
 
 - [ ] Startseite lädt die SPA, die Konsole zeigt keine Ladefehler der Bundles.
 - [ ] Deep-Link `/login` direkt aufrufen und die Seite neu laden: die Login-Ansicht erscheint,
