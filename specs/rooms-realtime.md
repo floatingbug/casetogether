@@ -41,7 +41,7 @@ Ein Join besitzt bewusst kein `expectedVersion`. Die Reihenfolge lautet:
 ## Socket-Lifecycle und Handshake
 
 1. Client authentifiziert per HttpOnly-Cookie und zugelassenem Origin.
-2. Origin-/Authfehler werden für WebSocket und Long-Polling als `connect_error.data = { error: ApiError }` sowie HTTP-`ErrorResponse` abgebildet. Ungültige Session: HTTP 401/`UNAUTHENTICATED`; Origin/Fetch Metadata: HTTP 403/`CSRF_REJECTED`; interner Fehler: HTTP 500/`INTERNAL_ERROR`. `connect_error.message` ist nie der fachliche Auswertungskanal.
+2. Origin-/Authfehler werden für WebSocket und Long-Polling als `connect_error.data = { error: ApiError }` sowie HTTP-`ErrorResponse` abgebildet. Ungültige Session: HTTP 401/`UNAUTHENTICATED`; Origin: HTTP 403/`CSRF_REJECTED`; interner Fehler: HTTP 500/`INTERNAL_ERROR`. `connect_error.message` ist nie der fachliche Auswertungskanal.
 3. Client sendet `room:join { roomId }` und erhält im Ack `{ room, game, serverTime }` in eigener Sicht. Ohne Mitgliedschaft kein Socket-Raumbeitritt.
 4. Präsenzsendungen enthalten den vollständigen flüchtigen Online-/Offline-Stand aller Raummitglieder. Sie sind nicht versioniert und werden nicht als Spielhistorie gespeichert.
 5. Fachliche Raumänderungen senden Versionsevents; Chat sendet persistierte `ChatMessage`; Spiel sendet versionierte, empfängerspezifische `GameEvent`-Projektionen.
@@ -72,23 +72,23 @@ Clients wenden nur `localVersion + 1` direkt an und deduplizieren ältere/bekann
 
 ## Fehlerfälle
 
-| Fall | Vertragliches Verhalten |
-|---|---|
-| Raum voll | `ROOM_FULL`; exakter Join-Replay/No-op bestehender Mitglieder bleibt idempotent ohne neue Version |
-| Code ungültig/abgelaufen | `INVITATION_INVALID`, außer exakter eigener Join-Receipt mit noch aktiver Mitgliedschaft |
-| Nicht Mitglied | `NOT_FOUND`; keine Rich-Raum-/Sessiondaten trotz historischem anderen Receipt |
-| Keine Hostberechtigung | `FORBIDDEN`, sofern der Raum sichtbar ist; ohne passenden Secret-Receipt keine Rotation |
-| Create/Rotate-Response verloren | codefreie `SecretReplayResponse`, keine Version/Rotation; bei Bedarf neue Request-ID rotieren |
-| Host verlässt Lobby | atomare Raumschließung, `room:closed` an befugte Empfänger |
-| Mitglied verlässt Lobby | Mitglied entfernen, Room-Version +1, `room:member-left` |
-| Leave-Ack nach Austritt verloren | identischer direkter Retry liefert nur minimales Leave-Ack aus eigenem Receipt, kein Snapshot |
-| Leave nach Start neuer Request | `INVALID_STATE_TRANSITION`; Disconnect bleibt nur Offline-Präsenz |
-| Fremder Pending-Start | `OPERATION_IN_PROGRESS`, keine Intentübernahme; eigener exakter Retry setzt fort |
-| Event doppelt gesendet | erneut autorisierter Receipt-/Ergebnisverweis, keine zweite Mutation/Broadcast |
-| Veraltete Version | `VERSION_CONFLICT` mit `currentVersion`, danach Snapshot |
-| Eventlücke/Schemafehler | Delta nicht anwenden; Snapshot-Synchronisation |
-| Payload zu groß | `PAYLOAD_TOO_LARGE`; keine Verarbeitung |
-| Zu viele Aktionen | `RATE_LIMITED`, REST mit `Retry-After` |
+| Fall                             | Vertragliches Verhalten                                                                           |
+| -------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Raum voll                        | `ROOM_FULL`; exakter Join-Replay/No-op bestehender Mitglieder bleibt idempotent ohne neue Version |
+| Code ungültig/abgelaufen         | `INVITATION_INVALID`, außer exakter eigener Join-Receipt mit noch aktiver Mitgliedschaft          |
+| Nicht Mitglied                   | `NOT_FOUND`; keine Rich-Raum-/Sessiondaten trotz historischem anderen Receipt                     |
+| Keine Hostberechtigung           | `FORBIDDEN`, sofern der Raum sichtbar ist; ohne passenden Secret-Receipt keine Rotation           |
+| Create/Rotate-Response verloren  | codefreie `SecretReplayResponse`, keine Version/Rotation; bei Bedarf neue Request-ID rotieren     |
+| Host verlässt Lobby              | atomare Raumschließung, `room:closed` an befugte Empfänger                                        |
+| Mitglied verlässt Lobby          | Mitglied entfernen, Room-Version +1, `room:member-left`                                           |
+| Leave-Ack nach Austritt verloren | identischer direkter Retry liefert nur minimales Leave-Ack aus eigenem Receipt, kein Snapshot     |
+| Leave nach Start neuer Request   | `INVALID_STATE_TRANSITION`; Disconnect bleibt nur Offline-Präsenz                                 |
+| Fremder Pending-Start            | `OPERATION_IN_PROGRESS`, keine Intentübernahme; eigener exakter Retry setzt fort                  |
+| Event doppelt gesendet           | erneut autorisierter Receipt-/Ergebnisverweis, keine zweite Mutation/Broadcast                    |
+| Veraltete Version                | `VERSION_CONFLICT` mit `currentVersion`, danach Snapshot                                          |
+| Eventlücke/Schemafehler          | Delta nicht anwenden; Snapshot-Synchronisation                                                    |
+| Payload zu groß                  | `PAYLOAD_TOO_LARGE`; keine Verarbeitung                                                           |
+| Zu viele Aktionen                | `RATE_LIMITED`, REST mit `Retry-After`                                                            |
 
 ## Sicherheitsfälle
 

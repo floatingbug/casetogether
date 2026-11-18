@@ -17,10 +17,10 @@ Verbindliche Details: ADR-001 bis ADR-003, `contracts/shared-types.md`, `contrac
 - Cookie `ct_session`: `HttpOnly`, `Path=/`, in Produktion `Secure`; `SameSite=Lax` in
   Entwicklung/Test, `SameSite=None` in Produktion für die getrennten Vercel-/VPS-Origins
   (ADR-004); kein Local-/Session-Storage, URL-Query oder Socket-Handshake-Body für Tokens.
-- Unsafe REST verlangt Origin-Allowlist, geeignete Fetch Metadata und JSON. Diese Prüfungen sowie CORS werden serverseitig erzwungen und gelten auch für Socket-Handshake/Long-Polling.
+- Unsafe REST verlangt einen exakt erlaubten Origin und JSON. Cross-site `Sec-Fetch-Site` ist für die getrennten Vercel-/VPS-Origins erwartet und kein Ablehnungsgrund (ADR-004). Diese Prüfungen sowie CORS werden serverseitig erzwungen und gelten auch für Socket-Handshake/Long-Polling.
 - CORS verwendet exakte Origins und Credentials, niemals `*` mit Credentials. Die Frontend-Origin ist ein Konfigurationswert, kein clientautorisierender Beweis ohne Serververgleich.
 - Socket-Verbindung wird beim serverseitigen Logout/Revocation getrennt. Auth beim Handshake ersetzt keine aktuelle fachliche Autorisierung bei jedem Command.
-- Handshakefehler folgen exakt `contracts/events.md`: `connect_error.data = { error: ApiError }` und identischer Long-Polling-`ErrorResponse`. Signatur/Ablauf/Revocation ergibt 401/`UNAUTHENTICATED`, Origin/Fetch Metadata 403/`CSRF_REJECTED`, intern 500/`INTERNAL_ERROR`. Freie Transportfehler dürfen die Kategorie nicht verwässern.
+- Handshakefehler folgen exakt `contracts/events.md`: `connect_error.data = { error: ApiError }` und identischer Long-Polling-`ErrorResponse`. Signatur/Ablauf/Revocation ergibt 401/`UNAUTHENTICATED`, Origin 403/`CSRF_REJECTED`, intern 500/`INTERNAL_ERROR`. Freie Transportfehler dürfen die Kategorie nicht verwässern.
 - `SESSION_SECRET` hat mindestens 32 Byte Zufallsentropie, ist nicht im Frontend enthalten und nicht mit einem optionalen Provider-Key gleichzusetzen.
 
 ## 3. Credentials, Einladungen und Rate Limits
@@ -67,7 +67,7 @@ Verbindliche Details: ADR-001 bis ADR-003, `contracts/shared-types.md`, `contrac
 - Vue-Content wird standardmäßig escaped; `v-html` mit Spieler-/Modelltext ist verboten, sofern nicht ein neuer Security-Vertrag eine sichere Sanitization festlegt. Links aus Modell-/Nutzerdaten benötigen Protokoll-Allowlist.
 - Backend setzt eine restriktive Security-Header-Baseline (CSP ohne `unsafe-eval`, `nosniff`, Referrer-Policy, Frame-Schutz); konkrete Werte werden mit Vite-/Deployment-Assets geprüft, ohne Sicherheit für Komfort abzuschalten.
 - Cookies werden nur über HTTPS in Produktion gesetzt. HSTS wird dort auf Transportebene aktiviert. Keine Credentials in Frontend-Fehler-/Analytics-Events.
-- CSRF-Tests umfassen fehlende/falsche Origin, cross-site Fetch Metadata sowie falschen Content-Type. CORS-Tests umfassen unbekannte Origin und Socket-Handshake.
+- CSRF-Tests umfassen fehlende/falsche Origin, cross-site Requests mit erlaubtem und fremdem Origin sowie falschen Content-Type. CORS-Tests umfassen unbekannte Origin und Socket-Handshake.
 - Secrets stehen nur in lokaler/hostseitiger Secret-Verwaltung; Repository, Browserbundle, Testfixtures und CI-Logs enthalten keine echten Credentials. Tests/CI führen keine echten LLM-Aufrufe aus.
 
 ## 8. Logging und Datenschutzgrenzen

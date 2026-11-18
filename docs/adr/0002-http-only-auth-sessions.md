@@ -20,7 +20,9 @@ Die Vue-SPA benötigt eine gemeinsame Authentifizierung für REST und Socket.IO.
    Logout löscht bzw. revoziert den Serverdatensatz und setzt das Cookie mit identischen
    Pfad-/Sicherheitsattributen zurück.
 4. Browser-JavaScript speichert kein Bearer-Token in Local-/Session-Storage. Das Auth-Cookie wird automatisch bei zugelassenem REST-/Socket-Transport mitgesendet und ist niemals Teil von URL, Request-Body oder Client-DTO.
-5. Jede unsichere REST-Methode verlangt ein JSON-Body-Format, soweit ein Body vorgesehen ist, sowie einen exakt gegen `FRONTEND_ORIGIN` beziehungsweise die Server-Allowlist geprüften `Origin`. Abweichende/fehlende Origins oder cross-site `Sec-Fetch-Site` werden mit `CSRF_REJECTED` abgelehnt. Diese Prüfung ergänzt, nicht ersetzt SameSite und Autorisierung.
+5. Jede unsichere REST-Methode verlangt ein JSON-Body-Format, soweit ein Body vorgesehen ist, sowie einen exakt gegen `FRONTEND_ORIGIN` beziehungsweise die Server-Allowlist geprüften `Origin`. Fehlende oder nicht exakt zugelassene Origins werden mit `CSRF_REJECTED` abgelehnt. Cross-site
+   `Sec-Fetch-Site` ist für die getrennten Vercel-/VPS-Origins erwartet und kein Ablehnungsgrund
+   (ADR-004). Diese Prüfung ergänzt, nicht ersetzt SameSite und Autorisierung.
 6. CORS erlaubt nur konfigurierte Origins, `credentials: true`, benötigte Methoden und `Content-Type`; Wildcards mit Credentials sind verboten. Der Socket.IO-Handshake prüft denselben Origin-Allowlist-Eintrag, das Auth-Cookie und die serverseitige Session. Query-/Body-Tokens sind verboten.
 7. REST prüft Auth-Session und fachliche Berechtigung pro Use Case. Socket.IO prüft Auth beim Handshake und Raummitgliedschaft bei jedem Event. Eine serverseitig revozierte Session ist für neue Aktionen ungültig; Logout trennt zugehörige Sockets serverseitig.
 8. `SESSION_SECRET` ist mindestens 32 Byte zufälliges Server-Secret und nur für Basismodus-Auth erforderlich, nicht für einen KI-Provider. Rotation wird als Betriebsverfahren dokumentiert; sie darf bestehende Sessions kontrolliert invalidieren.

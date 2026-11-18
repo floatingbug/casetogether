@@ -110,7 +110,7 @@ describe('Socket.IO cookie/origin handshake mappings', () => {
           options,
           403,
           'CSRF_REJECTED',
-          'Origin or fetch metadata was rejected',
+          'Origin was rejected',
         );
       }
     },

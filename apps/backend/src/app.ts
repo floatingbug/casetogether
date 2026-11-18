@@ -102,7 +102,7 @@ function createOriginProtection(allowedOrigins: ReadonlySet<string>): RequestHan
     // must not override an explicitly allowlisted origin.
     const origin = request.headers.origin;
     if (origin === undefined || !allowedOrigins.has(origin)) {
-      sendError(response, 403, 'CSRF_REJECTED', 'Origin or fetch metadata was rejected');
+      sendError(response, 403, 'CSRF_REJECTED', 'Origin was rejected');
       return;
     }
     if (hasRequestBody(request) && request.is('application/json') !== 'application/json') {

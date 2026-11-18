@@ -83,7 +83,7 @@ export class HandshakeAuthenticator {
     // must not override an explicitly allowlisted origin.
     const origin = request.headers.origin;
     if (origin === undefined || !this.allowedOrigins.has(origin)) {
-      return this.failure(403, 'CSRF_REJECTED', 'Origin or fetch metadata was rejected');
+      return this.failure(403, 'CSRF_REJECTED', 'Origin was rejected');
     }
 
     const cookieValue = readAuthCookie(request.headers.cookie, this.cookieConfiguration);
