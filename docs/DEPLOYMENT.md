@@ -165,12 +165,20 @@ Der Server akzeptiert nur noch Key-Authentifizierung:
   anschließendem Neustart von `casetogether-api`.
 
 - `/usr/local/bin/casetogether-healthcheck.sh` prüft alle fünf Minuten
-  `https://api.casetogether.tasse-voll-code.de/api/v1/ready` und protokolliert nur
-  Auffälligkeiten (Status ungleich 200, weniger als 80 MiB verfügbarer RAM, mehr als 85 %
-  Diskbelegung) in `/var/log/casetogether-health.log`; die Datei wird ab 512 KiB gekürzt.
+  `https://api.casetogether.tasse-voll-code.de/api/v1/ready`. Es protokolliert und meldet nur
+  Zustandswechsel (gesund → Fehler bzw. Fehler → gesund) mit Status, verfügbarem RAM und
+  Diskbelegung in `/var/log/casetogether-health.log`; die Datei wird ab 512 KiB gekürzt.
+  Schwellen: Status ungleich 200, weniger als 80 MiB RAM, mehr als 85 % Disk.
   Steuerung: `/etc/cron.d/casetogether-healthcheck`.
-- Es gibt noch **kein externes Alerting**. Für echten Betrieb sollte ein Uptime-Monitor
-  `/api/v1/ready` überwachen und bei Fehlschlag benachrichtigen.
+- Optionaler Webhook: Liegt in `/etc/casetogether/alert-webhook` (Modus `600`, root) eine URL,
+  sendet der Healthcheck bei Zustandswechseln JSON `{"text": "..."}` dorthin. Das passt zu
+  Slack-/Discord-/ntfy-kompatiblen Webhooks, ohne weitere Software auf dem Server.
+- **Externes Alerting:** Empfohlen ist zusätzlich ein Uptime-Monitor bei einem externen Dienst
+  (gängig und kostenlos: UptimeRobot). Monitor auf `https://api.casetogether.tasse-voll-code.de/
+api/v1/ready` mit HTTP(s)-Prüfung, 5-Minuten-Intervall und E-Mail-Alarm. Der Monitor erkennt
+  auch einen Ausfall des gesamten Hosts, den der lokale Healthcheck nicht melden kann. Die
+  Einrichtung erfordert ein Konto beim Anbieter; mit einem API-Schlüssel kann der Monitor
+  automatisiert angelegt werden.
 
 ## Automatische Deployments und Rollback
 
@@ -224,7 +232,7 @@ der absolute API-Origin zu setzen, weil der Vercel-Origin kein Backend ausliefer
   Chatnachricht über `wss://api.casetogether.tasse-voll-code.de/socket.io` zugestellt.
 - Testkonten und Testraum wurden nach der Verifikation entfernt; die Datenbank enthält nur den
   beim Start provisionierten Fall.
-- Offen: externes Alerting und die restlichen T011-Akzeptanzkriterien (u. a. Staging, Aufbewahrungsnachweise).
+- Offen: Einrichtung des externen Uptime-Monitors (Konto beim Anbieter erforderlich) und die restlichen T011-Akzeptanzkriterien (u. a. Staging, Aufbewahrungsnachweise).
 
 ## Bekannte Einschränkungen
 
