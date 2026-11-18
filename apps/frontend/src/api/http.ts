@@ -1,5 +1,6 @@
 import { ErrorResponseSchema, type ErrorCode, type ErrorDetails } from '@casetogether/shared';
 import type { z } from 'zod';
+import { API_ORIGIN } from '../config/api-origin';
 
 export type ApiClientErrorCode =
   | ErrorCode
@@ -46,6 +47,15 @@ interface RequestOptions {
 
 function defaultFetcher(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   return globalThis.fetch(input, init);
+}
+
+/**
+ * Builds the REST URL from the optional build-time backend origin and the existing API path.
+ * With an empty origin the URL stays relative, which keeps local dev, preview and tests on the
+ * Vite same-origin proxy.
+ */
+export function buildRequestUrl(path: `/${string}`, origin: string = API_ORIGIN): string {
+  return `${origin}/api/v1${path}`;
 }
 
 function isJsonResponse(response: Response): boolean {
@@ -97,7 +107,7 @@ async function send(
 
   let response: Response;
   try {
-    response = await (options.fetcher ?? defaultFetcher)(`/api/v1${configuration.path}`, init);
+    response = await (options.fetcher ?? defaultFetcher)(buildRequestUrl(configuration.path), init);
   } catch (error: unknown) {
     throw new ApiClientError('NETWORK_ERROR', 'The API request could not reach the server', {
       cause: error,

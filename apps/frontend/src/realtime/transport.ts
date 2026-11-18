@@ -1,4 +1,5 @@
 import { io, type Socket } from 'socket.io-client';
+import { API_ORIGIN } from '../config/api-origin';
 
 export interface SocketTransportListeners {
   connected(): void;
@@ -74,7 +75,8 @@ export const KNOWN_EVENTS = new Set([
 ]);
 
 export function createSocketTransport(listeners: SocketTransportListeners): SocketTransport {
-  const socket = io({
+  // An empty build-time origin keeps the historical same-origin connection (dev proxy, tests).
+  const socket = io(API_ORIGIN === '' ? undefined : API_ORIGIN, {
     path: '/socket.io',
     withCredentials: true,
     autoConnect: false,

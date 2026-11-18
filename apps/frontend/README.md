@@ -14,6 +14,19 @@ Vite leitet `/api` und `/socket.io` an `http://127.0.0.1:3000` weiter. Socket.IO
 
 Bei lokalen HTTP-LAN-Origins kann `crypto.randomUUID()` im Browser fehlen. Request-IDs verwenden diese Funktion bevorzugt und erzeugen sonst aus 16 Bytes von `crypto.getRandomValues()` eine RFC-konforme UUID v4. Das ist ausschließlich Kompatibilität für lokale Entwicklung; produktive HTTPS- und Cookie-Anforderungen bleiben unverändert.
 
+## Deployment (Vercel)
+
+Das Frontend ist als statische Vite-SPA für ein getrenntes Hosting vorgesehen. REST und Socket.IO verwenden beide dieselbe Build-Zeit-Variable `VITE_API_ORIGIN` (`src/config/api-origin.ts`):
+
+```bash
+VITE_API_ORIGIN=https://api.casetogether.tasse-voll-code.de
+```
+
+- Die Variable ist optional und wird beim Build eingelesen. Ohne Wert bleibt das bisherige Verhalten exakt erhalten: REST-Pfade sind relativ und Socket.IO verbindet sich mit der Origin der ausgelieferten Seite (lokale Entwicklung über den Vite-Proxy, Preview, Tests).
+- Ein gesetzter Wert muss eine reine absolute Origin ohne Pfad, Query, Hash oder Zugangsdaten sein; `https` ist immer erlaubt, `http` nur für `localhost`/`127.0.0.1`. Ungültige Werte brechen den App-Start mit einer klaren Fehlermeldung ab (nicht erst zur Laufzeit einer Anfrage).
+- Der Wert ist kein Secret und darf im Build-Artefakt sichtbar sein.
+- Cookies (`credentials: 'include'`, `withCredentials: true`), `SameSite`/`Secure`, CORS und die erlaubte Frontend-Origin (`FRONTEND_ORIGIN`) sind Backend-/Host-Konfiguration und nicht Teil dieses Frontends. Für die Vercel-Origin muss das Backend die entsprechende Herkunft zulassen; das Frontend erfindet dafür keine Endpunkte.
+
 ## Struktur und Datenautorität
 
 - `src/api/http.ts` kapselt Fetch mit JSON, `credentials: 'include'` und strikten Shared-Fehler- und Erfolgshüllen.
