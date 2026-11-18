@@ -97,13 +97,13 @@ describe('Socket.IO cookie/origin handshake mappings', () => {
   );
 
   it.each(['websocket', 'polling'] as const)(
-    'maps absent, untrusted and cross-site origins for %s before cookie authentication',
+    'maps absent and untrusted origins for %s before cookie authentication',
     async (transport) => {
       const host = await world!.register('handshake-origin@example.test', 'Handshake host');
       for (const options of [
         { cookie: host.cookie, omitOrigin: true },
         { cookie: host.cookie, origin: 'https://untrusted.example' },
-        { cookie: host.cookie, origin: ALLOWED_ORIGIN, fetchSite: 'cross-site' },
+        { cookie: host.cookie, origin: 'https://untrusted.example', fetchSite: 'cross-site' },
       ]) {
         await assertRejectedHandshake(
           transport,
@@ -148,6 +148,20 @@ describe('Socket.IO cookie/origin handshake mappings', () => {
     async (transport) => {
       const host = await world!.register(`handshake-success-${transport}@example.test`, 'Host');
       const client = await world!.connect({ transport, cookie: host.cookie });
+      expect(client.connected).toBe(true);
+      client.close();
+    },
+  );
+
+  it.each(['websocket', 'polling'] as const)(
+    'accepts an allowlisted origin with cross-site fetch metadata for %s',
+    async (transport) => {
+      const host = await world!.register(`handshake-cross-site-${transport}@example.test`, 'Host');
+      const client = await world!.connect({
+        transport,
+        cookie: host.cookie,
+        fetchSite: 'cross-site',
+      });
       expect(client.connected).toBe(true);
       client.close();
     },
