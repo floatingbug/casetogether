@@ -185,6 +185,32 @@ api/v1/ready` mit HTTP(s)-Prüfung, 5-Minuten-Intervall und E-Mail-Alarm. Der Mo
   Einrichtung erfordert ein Konto beim Anbieter; mit einem API-Schlüssel kann der Monitor
   automatisiert angelegt werden.
 
+### Start-Intent-Cleanup und Aufbewahrung
+
+Der Backend-Prozess bereinigt verwaiste Start-Intents selbst; es gibt keinen separaten Cronjob und
+keine zusätzliche Umgebungsvariable. Der Timer startet mit dem Backend, läuft alle 60 Sekunden
+(nicht überlappend, `unref`) und stoppt beim Shutdown. Pro Lauf werden höchstens 100 Kandidaten
+bearbeitet; ein Rückstand wird über mehrere Läufe abgearbeitet.
+
+- Kandidaten sind ausschließlich `pending`-/`prepared`-Sessions mit
+  `startIntent.createdAt <= now - 15 Minuten` und ohne `room:start`-Receipt.
+- Der Job löscht nie selbst. Er setzt `superseded`, `supersededAt`, `updatedAt` und
+  `deleteAfter = now + 15 Minuten`; die TTL entfernt das Dokument danach.
+- Vor und nach dem Supersede wird der Room direkt aus MongoDB gelesen. Verlinkte Sessions werden
+  übersprungen; bei einem zwischenzeitlichen Link wird der vorherige Zustand wiederhergestellt.
+  Schlägt das fehl, wird die TTL-Löschung entwaffnet und der Konflikt geloggt.
+- Logs: `start_intent_cleanup_run` (Zähler `scanned`, `superseded`, `restored`, `skippedLinked`,
+  `skippedChanged`, `failed`) und `start_intent_cleanup_error` (`phase`, `category`). Es werden
+  keine Actor-, Request-, Room- oder Session-IDs und keine Dialoginhalte geloggt.
+- Prüfung nach einem Deployment:
+  `pm2 logs casetogether-api --lines 200 | grep start_intent_cleanup`. Bei wiederholtem
+  `failed > 0`, `error_path_disarm_missed` oder `restore_conflict` zuerst Room und Session manuell
+  prüfen; ein entwaffnetes Dokument nicht löschen, solange der Room darauf verweist.
+- Aufbewahrung bleibt unverändert: Auth-Sessions sieben Tage, ungestartete Lobbys 24 Stunden,
+  abgeschlossene Sessions 30 Tage nach `finishedAt`, verwaiste Start-Intents 15 Minuten nach dem
+  Supersede. Receipt-Replays gelten nur innerhalb dieser Aufbewahrung; Klartext-Einladungscodes
+  werden nie gespeichert, um ein Replayfenster zu verlängern.
+
 ## Automatische Deployments und Rollback
 
 - Push auf einen Branch oder Öffnen/Aktualisieren eines Pull Requests erzeugt ein
@@ -239,7 +265,9 @@ der absolute API-Origin zu setzen, weil der Vercel-Origin kein Backend ausliefer
   Chatnachricht über `wss://api.casetogether.tasse-voll-code.de/socket.io` zugestellt.
 - Testkonten und Testraum wurden nach der Verifikation entfernt; die Datenbank enthält nur den
   beim Start provisionierten Fall.
-- Offen: Einrichtung des externen Uptime-Monitors (Konto beim Anbieter erforderlich) und die restlichen T011-Akzeptanzkriterien (u. a. Staging, Aufbewahrungsnachweise).
+- Offen: Einrichtung des externen Uptime-Monitors (Konto beim Anbieter erforderlich) und ein
+  dokumentiertes Staging-Deployment. Der Start-Intent-Cleanup ist implementiert und getestet; er
+  wird mit dem nächsten Backend-Deployment aktiv.
 
 ## Bekannte Einschränkungen
 

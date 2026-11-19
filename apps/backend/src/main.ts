@@ -6,6 +6,7 @@ import {
   provisionDefaultCases,
 } from './modules/game-sessions/index.js';
 import type { GameSessionService } from './modules/game-sessions/game-session-service.js';
+import type { StartIntentCleanup } from './modules/game-sessions/start-intent-cleanup.js';
 import {
   createIdentityService,
   type IdentityService,
@@ -21,6 +22,7 @@ async function start(): Promise<void> {
   let identityService: IdentityService;
   let roomService: RoomService;
   let gameSessionService: GameSessionService;
+  let startIntentCleanup: StartIntentCleanup;
   let realtimeGateway: RealtimeGateway;
   try {
     identityService = await createIdentityService({
@@ -42,6 +44,7 @@ async function start(): Promise<void> {
       },
     });
     gameSessionService = gameApplication.gameSessions;
+    startIntentCleanup = gameApplication.startIntentCleanup;
     await provisionDefaultCases(mongoDatabase.database);
     realtimeGateway.configureGameServices({
       gameSessions: gameApplication.gameSessions,
@@ -66,6 +69,7 @@ async function start(): Promise<void> {
     console.log(JSON.stringify({ event: 'backend_listening', port: config.port }));
   });
   realtimeGateway.attach(server);
+  startIntentCleanup.start();
   let shuttingDown = false;
 
   const shutdown = async (): Promise<void> => {
@@ -73,6 +77,7 @@ async function start(): Promise<void> {
       return;
     }
     shuttingDown = true;
+    startIntentCleanup.stop();
     realtimeGateway.close();
 
     try {

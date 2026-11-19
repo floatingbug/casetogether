@@ -13,6 +13,7 @@ import {
   MongoGameSessionRoomRepository,
 } from './mongo-repositories.js';
 import type { GamePublicationPort } from './publication.js';
+import { StartIntentCleanup } from './start-intent-cleanup.js';
 
 export interface GameSessionApplicationOptions {
   database: Db;
@@ -28,6 +29,7 @@ export async function createGameSessionApplication(
 ): Promise<{
   gameSessions: GameSessionService;
   dialogue: DialogueService;
+  startIntentCleanup: StartIntentCleanup;
 }> {
   await ensureCaseIndexes(options.database);
   await ensureGameSessionIndexes(options.database);
@@ -60,5 +62,6 @@ export async function createGameSessionApplication(
       ? {}
       : { rateLimiter: options.dialogueRateLimiter }),
   });
-  return { gameSessions, dialogue };
+  const startIntentCleanup = new StartIntentCleanup({ sessions, rooms, clock });
+  return { gameSessions, dialogue, startIntentCleanup };
 }

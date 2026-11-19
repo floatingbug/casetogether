@@ -5,6 +5,8 @@ import { RoomDocumentSchema, type RoomDocument } from '../rooms/persistence.js';
 import {
   CaseDefinitionDocumentSchema,
   GameSessionDocumentSchema,
+  SUPERSEDED_START_INTENT_RETENTION_MS,
+  StartIntentCleanupCandidateDocumentSchema,
   caseDefinitionFromDocument,
   type GameSessionDocument,
   type SessionStateMutation,
@@ -12,11 +14,15 @@ import {
 import type {
   CaseRepository,
   CompleteStartInput,
+  FindStaleStartIntentCandidatesInput,
   GameSessionRepository,
   GameSessionRoomRepository,
   CompleteStartResult,
   ProviderReservationInput,
   ProviderSettlementInput,
+  RestoreSupersededStartIntentInput,
+  StartIntentCleanupCandidate,
+  SupersedeStaleStartIntentInput,
 } from './repository.js';
 import { DuplicateGameSessionRoomError } from './repository.js';
 
@@ -26,6 +32,23 @@ function parseSession(value: unknown): GameSessionDocument {
     throw new Error('Invalid gameSessions persistence document');
   }
   return parsed.data;
+}
+
+const START_INTENT_CLEANUP_MAX_BATCH = 1000;
+
+function parseStartIntentCleanupCandidate(value: unknown): StartIntentCleanupCandidate {
+  const parsed = StartIntentCleanupCandidateDocumentSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error('Invalid gameSessions start-intent cleanup projection');
+  }
+  return {
+    sessionId: parsed.data._id,
+    roomId: parsed.data.roomId,
+    status: parsed.data.startIntent.status,
+    createdAt: parsed.data.startIntent.createdAt,
+    updatedAt: parsed.data.updatedAt,
+    deleteAfter: parsed.data.deleteAfter,
+  };
 }
 
 function isDuplicateRoomError(error: unknown): boolean {
@@ -292,12 +315,101 @@ export class MongoGameSessionRepository implements GameSessionRepository {
           'startIntent.status': 'superseded',
           'startIntent.supersededAt': now,
           updatedAt: now,
-          deleteAfter: new Date(now.getTime() + 15 * 60 * 1000),
+          deleteAfter: new Date(now.getTime() + SUPERSEDED_START_INTENT_RETENTION_MS),
         },
       },
       { returnDocument: 'after' },
     );
     return document === null ? null : parseSession(document);
+  }
+
+  async findStaleStartIntentCandidates(
+    input: FindStaleStartIntentCandidatesInput,
+  ): Promise<readonly StartIntentCleanupCandidate[]> {
+    const limit = Math.max(1, Math.min(input.limit, START_INTENT_CLEANUP_MAX_BATCH));
+    const documents: unknown[] = await this.sessions
+      .find(
+        {
+          'startIntent.status': { $in: ['pending', 'prepared'] },
+          'startIntent.createdAt': { $lte: input.staleBefore },
+          // The receipt is the authoritative marker of a successfully linked and committed start.
+          'actionReceipts.operation': { $ne: 'room:start' },
+        },
+        {
+          projection: {
+            _id: 1,
+            roomId: 1,
+            'startIntent.status': 1,
+            'startIntent.createdAt': 1,
+            updatedAt: 1,
+            deleteAfter: 1,
+          },
+        },
+      )
+      .sort({ 'startIntent.createdAt': 1, _id: 1 })
+      .limit(limit)
+      .toArray();
+    return documents.map(parseStartIntentCleanupCandidate);
+  }
+
+  async supersedeStaleStartIntent(
+    input: SupersedeStaleStartIntentInput,
+  ): Promise<GameSessionDocument | null> {
+    const document: unknown = await this.sessions.findOneAndUpdate(
+      {
+        _id: input.sessionId,
+        'startIntent.status': input.expectedStatus,
+        'startIntent.createdAt': input.expectedCreatedAt,
+        'actionReceipts.operation': { $ne: 'room:start' },
+      },
+      {
+        $set: {
+          'startIntent.status': 'superseded',
+          'startIntent.supersededAt': input.now,
+          updatedAt: input.now,
+          deleteAfter: input.deleteAfter,
+        },
+      },
+      { returnDocument: 'after' },
+    );
+    return document === null ? null : parseSession(document);
+  }
+
+  async restoreSupersededStartIntent(
+    input: RestoreSupersededStartIntentInput,
+  ): Promise<GameSessionDocument | null> {
+    // The exact supersede marker keeps a concurrent newer cleanup/start write from being reverted.
+    const document: unknown = await this.sessions.findOneAndUpdate(
+      {
+        _id: input.sessionId,
+        'startIntent.status': 'superseded',
+        'startIntent.supersededAt': input.supersededAt,
+        'actionReceipts.operation': { $ne: 'room:start' },
+      },
+      {
+        $set: {
+          'startIntent.status': input.previousStatus,
+          'startIntent.supersededAt': null,
+          updatedAt: input.previousUpdatedAt,
+          deleteAfter: input.previousDeleteAfter,
+        },
+      },
+      { returnDocument: 'after' },
+    );
+    return document === null ? null : parseSession(document);
+  }
+
+  async clearStartIntentDeletion(sessionId: ObjectId, supersededAt: Date): Promise<boolean> {
+    // Safety valve: if a linked session could not be restored, its TTL deletion is disarmed.
+    const result = await this.sessions.updateOne(
+      {
+        _id: sessionId,
+        'startIntent.status': 'superseded',
+        'startIntent.supersededAt': supersededAt,
+      },
+      { $set: { deleteAfter: null } },
+    );
+    return result.matchedCount === 1;
   }
 
   async commitState(
