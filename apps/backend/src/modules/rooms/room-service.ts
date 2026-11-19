@@ -357,8 +357,29 @@ export class RoomService {
       return { data: replay, publication: null };
     }
 
-    const initialRoom = await this.requireVisibleRoom(actorUserId, roomIdInput);
-    this.assertRotateAllowed(initialRoom, actorUserId, input.expectedVersion, this.now());
+    let initialRoom: RoomDocument;
+    try {
+      initialRoom = await this.requireVisibleRoom(actorUserId, roomIdInput);
+      this.assertRotateAllowed(initialRoom, actorUserId, input.expectedVersion, this.now());
+    } catch (error) {
+      if (!(error instanceof ApplicationError)) {
+        throw error;
+      }
+      // A concurrent identical request may have committed the rotation between the
+      // receipt prelookup and this room read. The exact receipt then wins over the
+      // stale precheck; real foreign or stale requests still get the original error.
+      const racedReplay = await this.readSecretReplay({
+        actorUserId,
+        operation: ROTATE_OPERATION,
+        aggregateId: roomId.toHexString(),
+        clientRequestId,
+        payloadHash,
+      });
+      if (racedReplay === null) {
+        throw error;
+      }
+      return { data: racedReplay, publication: null };
+    }
     const lookupKey = roomReceiptLookupKey(
       actorUserId,
       ROTATE_OPERATION,
@@ -435,8 +456,27 @@ export class RoomService {
       return { data: replay, publication: null };
     }
 
-    const initialRoom = await this.requireVisibleRoom(actorUserId, input.roomId);
-    this.assertLeaveAllowed(initialRoom, actorUserId, input.expectedVersion, this.now());
+    let initialRoom: RoomDocument;
+    try {
+      initialRoom = await this.requireVisibleRoom(actorUserId, input.roomId);
+      this.assertLeaveAllowed(initialRoom, actorUserId, input.expectedVersion, this.now());
+    } catch (error) {
+      if (!(error instanceof ApplicationError)) {
+        throw error;
+      }
+      // The winning leave may already have removed the actor or closed the room.
+      // Only an exact actor/room/request/payload receipt turns that into a replay.
+      const racedReplay = await this.readLeaveReplay(
+        actorUserId,
+        roomId,
+        clientRequestId,
+        payloadHash,
+      );
+      if (racedReplay === null) {
+        throw error;
+      }
+      return { data: racedReplay, publication: null };
+    }
     const closeLobby = initialRoom.hostUserId.equals(actorUserId);
     const lookupKey = roomReceiptLookupKey(
       actorUserId,
@@ -827,13 +867,14 @@ interface CreateRoomServiceOptions {
   clock?: Clock;
   invitationGenerator?: InvitationCodeGenerator;
   joinRateLimiter?: JoinRateLimiter;
+  repository?: RoomRepository;
 }
 
 export async function createRoomService(options: CreateRoomServiceOptions): Promise<RoomService> {
   const clock = options.clock ?? systemClock;
   await ensureRoomIndexes(options.database);
   return new RoomService({
-    repository: new MongoRoomRepository(options.database),
+    repository: options.repository ?? new MongoRoomRepository(options.database),
     users: new MongoRoomUserDirectory(options.database),
     clock,
     invitationGenerator: options.invitationGenerator ?? generateInvitationCode,

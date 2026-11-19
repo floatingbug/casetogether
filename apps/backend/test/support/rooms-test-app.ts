@@ -10,6 +10,7 @@ import {
   type IdentityService,
 } from '../../src/modules/identity/identity-service.js';
 import type { InvitationCodeGenerator } from '../../src/modules/rooms/invitation.js';
+import type { RoomRepository } from '../../src/modules/rooms/repository.js';
 import { createRoomService, type RoomService } from '../../src/modules/rooms/room-service.js';
 import {
   ALLOWED_ORIGIN,
@@ -35,6 +36,7 @@ interface CreateRoomsTestAppOptions {
   database: Db;
   clock?: Clock;
   invitationGenerator?: InvitationCodeGenerator;
+  repository?: RoomRepository;
   logInternalError?: (requestId: string) => void;
 }
 
@@ -52,6 +54,7 @@ export async function createRoomsTestApp(
     ...(options.invitationGenerator === undefined
       ? {}
       : { invitationGenerator: options.invitationGenerator }),
+    ...(options.repository === undefined ? {} : { repository: options.repository }),
   });
   const app = createApp({
     allowedOrigins: [ALLOWED_ORIGIN],
