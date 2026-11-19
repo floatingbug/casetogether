@@ -135,6 +135,48 @@ ssh casetogether-vps 'su - tom -c "pm2 logs casetogether-api --lines 100"'
 Ein Rollback deployt denselben Ablauf aus einem früheren Commit. Es gibt bewusst keine
 automatische Artefakthistorie auf dem Server.
 
+## Staging-Umgebung (Basismodus)
+
+Die Staging-Umgebung dient der Abnahme des vollständigen Katalogspiels ohne KI-Konfiguration. Sie
+ist bewusst von Produktion getrennt und benötigt keinen kostenpflichtigen Dienst. Das Verfahren ist
+dokumentiert; die Umgebung selbst ist noch nicht provisioniert und wird erst nach ausdrücklicher
+Freigabe und DNS-/VPS-Änderung aktiviert.
+
+| Baustein    | Staging-Wert                                                                                     |
+| ----------- | ------------------------------------------------------------------------------------------------ |
+| Frontend    | separates Vercel-Projekt `casetogether-staging` (oder lokales `vite preview`)                    |
+| API-Origin  | `https://api.staging.casetogether.tasse-voll-code.de`                                            |
+| Backend     | zweite PM2-App `casetogether-api-staging`, Port `3200`, `127.0.0.1`, eigenes Deploy-Verzeichnis  |
+| Datenbank   | eigene Datenbank `casetogether_staging` auf demselben mongod; niemals Produktionsdaten ungeprüft |
+| Secrets     | eigenes `SESSION_SECRET` in `ecosystem.staging.config.cjs` (`chmod 600`, nicht im Repository)    |
+| KI          | keine `OPENAI_API_KEY`/`OPENAI_MODEL`; Basismodus nutzt ausschließlich den Katalog               |
+| Überwachung | `/api/v1/health` und `/api/v1/ready`; Logs ohne Dialoginhalte oder Einladungscodes               |
+
+Einrichtung:
+
+1. DNS `api.staging` auf den VPS zeigen lassen; nginx-Server-Block mit WebSocket-Upgrade und
+   eigenem Let's-Encrypt-Zertifikat anlegen.
+2. Produktionsartefakt wie oben bauen und nach `/home/tom/projects/casetogether-api-staging`
+   synchronisieren. `ecosystem.staging.config.cjs` setzt `NODE_ENV=production`, `PORT=3200`,
+   `HOST=127.0.0.1`, `MONGODB_URI=mongodb://127.0.0.1:27017/casetogether_staging`, ein eigenes
+   `SESSION_SECRET` und `FRONTEND_ORIGIN` exakt auf den Staging-Frontend-Origin. KI-Variablen
+   bleiben ungesetzt.
+3. `pm2 start ecosystem.staging.config.cjs && pm2 save`; Produktions-App bleibt unberührt.
+4. Frontend-Projekt mit Repository-Wurzel, `VITE_API_ORIGIN=https://api.staging.…` und optionaler
+   Staging-Domain deployen. Preview-Deployments der Produktion bleiben unverändert.
+
+Abnahme:
+
+- `/api/v1/health` und `/api/v1/ready` liefern HTTP 200 mit `mongodb: up`, ohne Provider-Setup.
+- Registrierung, Login, Raum erstellen/beitreten und Socket-Verbindung funktionieren über die
+  Staging-Domain; Cookies sind `HttpOnly; Secure; SameSite=None` wie in Produktion.
+- Ein vollständiges 9-Fragen-Katalogspiel endet mit 100/100; ein Provider-Call-Spy belegt null
+  Aufrufe. Die Logs enthalten weder Dialoginhalte noch Einladungscodes oder Session-Secrets.
+- Der Start-Intent-Cleanup läuft auch hier; `start_intent_cleanup_run` erscheint in den Logs.
+- Datenisolation: Staging nutzt eine eigene Datenbank, eigene Secrets und einen eigenen Port.
+  Produktions-Backups werden nicht ungeprüft eingespielt; Testkonten werden nach der Abnahme
+  entfernt. Stoppen der Staging-App hat keine Auswirkung auf Produktion.
+
 ## SSH-Zugang
 
 Der Server akzeptiert nur noch Key-Authentifizierung:
@@ -265,9 +307,10 @@ der absolute API-Origin zu setzen, weil der Vercel-Origin kein Backend ausliefer
   Chatnachricht über `wss://api.casetogether.tasse-voll-code.de/socket.io` zugestellt.
 - Testkonten und Testraum wurden nach der Verifikation entfernt; die Datenbank enthält nur den
   beim Start provisionierten Fall.
-- Offen: Einrichtung des externen Uptime-Monitors (Konto beim Anbieter erforderlich) und ein
-  dokumentiertes Staging-Deployment. Der Start-Intent-Cleanup ist implementiert und getestet; er
-  wird mit dem nächsten Backend-Deployment aktiv.
+- Offen: Einrichtung des externen Uptime-Monitors (Konto beim Anbieter erforderlich). Das
+  Staging-Verfahren ist dokumentiert, die Umgebung aber noch nicht provisioniert. Der
+  Start-Intent-Cleanup ist implementiert und getestet; er wird mit dem nächsten
+  Backend-Deployment aktiv.
 
 ## Bekannte Einschränkungen
 
