@@ -42,6 +42,37 @@ Neustart-Verluste werden auf zwei Ebenen getestet:
    temporären `mongod`. Dazwischen wird der Node-Prozess mit `SIGTERM` beendet. Der Smoke führt mit echten
    Cookies Create, Join, Get und Host-Rotate aus und wiederholt Create/Rotate nach dem Neustart.
 
+## Behobener Rotate-/Replay-Race (T012)
+
+Der Test `rooms.integration.test.ts › resolves concurrent identical rotations as one rotated secret
+and one replay` konnte scheduleabhängig `200 rotated` + `409 VERSION_CONFLICT` statt
+`200/200 rotated/replayed` liefern. Ursache war ein TOCTOU im `RoomService.rotateInvitation`-Ablauf:
+
+- Beide identischen Requests lasen den Receipt, bevor einer committete (`room-service.ts:349-358`).
+- Der Gewinner committete Version 2 + `rotate`-Receipt.
+- Der Verlierer las den Raum erst danach, sah Version 2 und scheiterte im Service-Vorabcheck an
+  `assertRotateAllowed` mit `VERSION_CONFLICT`, bevor er den Repository-CAS oder den
+  Nach-CAS-Replay-Fallback erreichte.
+
+**Fix (2026-11-19):** `rotateInvitation` und `leaveRoom` prüfen nach einem `ApplicationError` aus
+Raumread/Assert den exakten Receipt erneut (`readSecretReplay` bzw. `readLeaveReplay`). Ein Treffer
+liefert den codefreien Replay ohne Publikation; ohne Treffer bleibt der ursprüngliche Fehler
+(`FORBIDDEN`, `NOT_FOUND`, `VERSION_CONFLICT`, `ROOM_CLOSED`, `INVALID_STATE_TRANSITION`). Gleicher
+Key mit anderem Payload-Hash ergibt weiterhin `IDEMPOTENCY_KEY_REUSED`. Alle fünf Fehlercodes
+bleiben außerhalb des Race-Fensters unverändert.
+
+**Deterministischer Gate-Test:** `rooms-gate-race.integration.test.ts` (neu) hält über
+`RoomReadGate`/`GatedRoomRepository` den zweiten Raumread an, bis beide Requests ihren initialen
+Receipt-Lookup abgeschlossen haben und der erste committet und geantwortet hat – ohne Sleeps,
+Retries oder gelockerte Assertions. Er deckt Rotation (`200/200`, `rotated`/`replayed`, Version 2,
+ein `rotate`-Receipt) und Host-Leave (beide minimales Ack, genau eine `room.closed`-Publikation,
+Version 2, ein `leave`-Receipt) ab.
+
+**Nachweis:** Gate-Test 30/30 Läufe grün, bestehender Rotationstest 30/30 isoliert grün, drei
+vollständige Backend-Suiten je 42 Dateien / 358 Tests grün; Typecheck, Lint und Format grün.
+Restrisiko: Replays gelten nur innerhalb der Receipt-Aufbewahrung (ADR-003 §16), echte parallele
+Fremdkommandos bleiben bewusst Konflikt/Not-Found, und es gibt keinen Mehrinstanz-/Langzeit-Soak.
+
 ## Nachweismatrix
 
 - `rooms.unit.test.ts`: Alphabet/CSPRNG-Form, kanonischer SHA-256-Hash, Scope-/Payload-Bindung und
@@ -51,6 +82,9 @@ Neustart-Verluste werden auf zwei Ebenen getestet:
   Host-/Fremdzugriff, Rotation/alter Code und Versionskonflikte. Vier parallele neue Gäste ergeben exakt
   drei erfolgreiche Joins und ein `ROOM_FULL`; identische Joins und gleiche/abweichende Rotationen
   belegen atomare Find-/Update-Prädikate statt Vorabread-Schutz.
+- `rooms-gate-race.integration.test.ts`: deterministische Barriere für identische Rotation und
+  Host-Leave; der zweite Raumread wird erst nach beiden Receipt-Lookups und dem Commit des Gewinners
+  freigegeben. Keine Sleeps/Retries.
 - `rooms-replays.integration.test.ts`: Create-/Rotate-Verlust nach Service-Neustart ohne Codeeffekt,
   bewusste Folgerotation mit neuer Request-ID, alter Join nach Rotation/Ablauf, No-op im vollen Raum,
   Ehemaligen-`NOT_FOUND`, Payload-Reuse, minimale Leave-Replays, Host-Close sowie codesfreie Ereignisse.
