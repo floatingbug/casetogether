@@ -59,4 +59,4 @@ Socket-Verbindungen können Aktionen nach Timeouts oder Reconnects wiederholen. 
 - T008: Providerport und kontrollierter Katalog-Fallback ohne zweiten angenommenen Spielzug.
 - T009 (Backend): `startIntent`, CAS, wiederansetzbarer Start, vollständige terminale Snapshots; T009 (Frontend): Secret-/Replay-/Konfliktzustände und Event-Snapshot-Validation.
 - T010: Crash-Punkte pending/prepared/Room-CAS, identische/abweichende Retries, Join nach Rotation, Leave nach Austritt, Rotation ohne Codeleck und Snapshotinvarianten.
-- T011: sicherer 15-Minuten-Cleanup ausschließlich unverknüpfter Intents, Metriken/Alarme und Betriebsverfahren.
+- T011: sicherer 15-Minuten-Cleanup ausschließlich unverknüpfter Intents, Metriken/Alarme und Betriebsverfahren. Implementiert als Timer im Backend-Prozess (60 s, Batch 100): Room-Link-Prüfung vor und nach dem Supersede, markergebundene Wiederherstellung bei einem Race, TTL-Entwaffnung als Safety-Valve, keine Hard-Delete-Operation und ausschließlich zählerbasierte, nicht-sensitive Logs (siehe `docs/DATABASE.md` §5 und `docs/DEPLOYMENT.md`).

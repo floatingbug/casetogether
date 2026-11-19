@@ -8,6 +8,19 @@ export {
 } from './mongo-repositories.js';
 export { NoopGamePublicationPort } from './publication.js';
 export { provisionDefaultCases } from './provision.js';
+export {
+  StartIntentCleanup,
+  START_INTENT_CLEANUP_BATCH_LIMIT,
+  START_INTENT_CLEANUP_INTERVAL_MS,
+  START_INTENT_STALE_AFTER_MS,
+} from './start-intent-cleanup.js';
+export type {
+  StartIntentCleanupDependencies,
+  StartIntentCleanupFailure,
+  StartIntentCleanupLogger,
+  StartIntentCleanupPhase,
+  StartIntentCleanupResult,
+} from './start-intent-cleanup.js';
 export type {
   GameActionResult,
   GamePublication,

@@ -40,6 +40,8 @@ import type {
 export const GAME_SESSION_SCHEMA_VERSION = 1;
 export const PROVIDER_ATTEMPT_LIMIT = 60;
 export const SESSION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+// Superseded start intents stay readable for the replay window before the existing TTL removes them.
+export const SUPERSEDED_START_INTENT_RETENTION_MS = 15 * 60 * 1000;
 
 const sha256HexSchema = z.string().regex(/^[a-f0-9]{64}$/);
 const visibilitySchema = z.enum(['room', 'actor']);
@@ -260,6 +262,32 @@ export const GameSessionDocumentSchema = z
   });
 
 export type GameSessionDocument = z.infer<typeof GameSessionDocumentSchema>;
+
+const StartIntentCleanupStatusSchema = z.enum(['pending', 'prepared']);
+
+/**
+ * Narrow projection used only by the stale start-intent cleanup. It intentionally omits all
+ * session content so the cleanup can never accidentally project secrets or player data.
+ */
+export const StartIntentCleanupCandidateDocumentSchema = z
+  .object({
+    _id: z.instanceof(ObjectId),
+    roomId: z.instanceof(ObjectId),
+    startIntent: z
+      .object({
+        status: StartIntentCleanupStatusSchema,
+        createdAt: z.date(),
+      })
+      .strict(),
+    updatedAt: z.date(),
+    deleteAfter: z.date().nullable(),
+  })
+  .strict();
+
+export type StartIntentCleanupCandidateDocument = z.infer<
+  typeof StartIntentCleanupCandidateDocumentSchema
+>;
+export type StartIntentCleanupStatus = z.infer<typeof StartIntentCleanupStatusSchema>;
 
 export interface SessionStateMutation {
   engineState: EngineStateCoreDocument;

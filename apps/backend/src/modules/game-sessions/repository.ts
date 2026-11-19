@@ -7,6 +7,7 @@ import type {
   ProviderAttemptDocument,
   SessionActionReceiptDocument,
   SessionStateMutation,
+  StartIntentCleanupStatus,
 } from './persistence.js';
 
 export interface CaseRepository {
@@ -53,6 +54,36 @@ export interface CompleteStartResult {
   receiptAdded: boolean;
 }
 
+export interface StartIntentCleanupCandidate {
+  sessionId: ObjectId;
+  roomId: ObjectId;
+  status: StartIntentCleanupStatus;
+  createdAt: Date;
+  updatedAt: Date;
+  deleteAfter: Date | null;
+}
+
+export interface FindStaleStartIntentCandidatesInput {
+  staleBefore: Date;
+  limit: number;
+}
+
+export interface SupersedeStaleStartIntentInput {
+  sessionId: ObjectId;
+  expectedStatus: StartIntentCleanupStatus;
+  expectedCreatedAt: Date;
+  now: Date;
+  deleteAfter: Date;
+}
+
+export interface RestoreSupersededStartIntentInput {
+  sessionId: ObjectId;
+  supersededAt: Date;
+  previousStatus: StartIntentCleanupStatus;
+  previousUpdatedAt: Date;
+  previousDeleteAfter: Date | null;
+}
+
 export interface GameSessionRepository {
   findById(sessionId: ObjectId): Promise<GameSessionDocument | null>;
   findByRoomId(roomId: ObjectId): Promise<GameSessionDocument | null>;
@@ -69,6 +100,16 @@ export interface GameSessionRepository {
     clientRequestId: string,
     now: Date,
   ): Promise<GameSessionDocument | null>;
+  findStaleStartIntentCandidates(
+    input: FindStaleStartIntentCandidatesInput,
+  ): Promise<readonly StartIntentCleanupCandidate[]>;
+  supersedeStaleStartIntent(
+    input: SupersedeStaleStartIntentInput,
+  ): Promise<GameSessionDocument | null>;
+  restoreSupersededStartIntent(
+    input: RestoreSupersededStartIntentInput,
+  ): Promise<GameSessionDocument | null>;
+  clearStartIntentDeletion(sessionId: ObjectId, supersededAt: Date): Promise<boolean>;
   commitState(
     sessionId: ObjectId,
     expectedVersion: number,
