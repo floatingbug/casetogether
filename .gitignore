@@ -8,6 +8,8 @@ coverage/
 *.log
 playwright-report/
 test-results/
+# Lokale Ausgaben des Playwright-MCP-Werkzeugs (Snapshots, Konsolenlogs), keine Quelle.
+.playwright-mcp/
 .worktrees/
 # Lokale Vercel-Projektverknüpfung (Projekt-/Org-IDs), gehört nicht ins Repository.
 .vercel/
